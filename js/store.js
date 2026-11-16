@@ -1,6 +1,6 @@
 // Progreso guardado en el dispositivo (localStorage).
 import {
-  NOTES, CHORDS, KNOWN_CHORDS, LESSONS, INTERVALS, MAX_BOX, FLUENT_MS, FLUENT_CHORD_MS,
+  NOTES, BASS_NOTES, CHORDS, KNOWN_CHORDS, LESSONS, INTERVALS, MAX_BOX, FLUENT_MS, FLUENT_CHORD_MS,
   FIRST_SESSION_NOTES, NEW_PER_SESSION,
 } from './data.js';
 
@@ -30,6 +30,7 @@ function fresh() {
     version: 2,
     notes: {}, // midi -> { box, due, seen, right, wrong, totalMs }
     chords: {}, // id -> igual
+    bass: {}, // midi -> igual, notas en clave de fa
     lessons: { chords: 0, staff: 0 }, // lecciones completadas por camino
     placementDone: false,
     streak: 0,
@@ -88,10 +89,10 @@ export function setSetting(name, value) {
 }
 
 // ---- Notas y acordes: mismo sistema de repaso ----
-// kind: 'n' (notas, por número MIDI) o 'c' (acordes, por símbolo).
+// kind: 'n' (notas en clave de sol, por número MIDI), 'b' (notas en clave de fa) o 'c' (acordes, por símbolo).
 
-const table = (kind) => (kind === 'c' ? state.chords : state.notes);
-const catalog = (kind) => (kind === 'c' ? CHORDS.map((c) => c.id) : NOTES.map((n) => n.midi));
+const table = (kind) => (kind === 'c' ? state.chords : kind === 'b' ? state.bass : state.notes);
+const catalog = (kind) => (kind === 'c' ? CHORDS.map((c) => c.id) : kind === 'b' ? BASS_NOTES.map((n) => n.midi) : NOTES.map((n) => n.midi));
 
 export function stat(kind, id) {
   return table(kind)[id] || null;
@@ -114,6 +115,7 @@ export function nextNew(kind) {
   const pending = catalog(kind).filter((id) => !table(kind)[id]);
   if (!pending.length) return [];
   if (kind === 'n' && have.length < FIRST_SESSION_NOTES) return pending.slice(0, FIRST_SESSION_NOTES - have.length);
+  if (kind === 'b' && have.length < 2) return pending.slice(0, 2 - have.length);
   const firm = have.every((id) => table(kind)[id].box >= 2);
   return firm ? pending.slice(0, NEW_PER_SESSION) : [];
 }
@@ -247,4 +249,24 @@ export function lastDays(today = todayStr()) {
     out.push({ label: names[dt.getDay()], done: practiced.has(key), today: i === 0 });
   }
   return out;
+}
+
+// ---- Copia de seguridad ----
+
+export function exportData() {
+  return JSON.stringify({ app: 'TenPiano', saved: new Date().toISOString(), data: state });
+}
+
+// Restaura una copia. Devuelve true si el texto era una copia válida.
+export function importData(text) {
+  try {
+    const parsed = JSON.parse(text);
+    const data = parsed && parsed.app === 'TenPiano' ? parsed.data : null;
+    if (!data || typeof data.notes !== 'object' || typeof data.settings !== 'object') return false;
+    localStorage.setItem(KEY, JSON.stringify(data));
+    load();
+    return true;
+  } catch (e) {
+    return false;
+  }
 }

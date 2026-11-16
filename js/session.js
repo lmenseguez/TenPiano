@@ -29,10 +29,10 @@ function pickMany(kind, ids, count, boost = []) {
   return out;
 }
 
-const noteCards = (ids, count, boost) => pickMany('n', ids, count, boost).map((midi) => ({ type: 'card', midi }));
+const noteCards = (kind, ids, count, boost) => pickMany(kind, ids, count, boost).map((midi) => ({ type: 'card', kind, midi }));
 
-function phrase(ids, length = 4) {
-  return { type: 'phrase', midis: pickMany('n', ids, length) };
+function phrase(kind, ids, length = 4) {
+  return { type: 'phrase', kind, midis: pickMany(kind, ids, length) };
 }
 
 // Tarjetas de acordes: alterna entre armar el acorde y reconocerlo.
@@ -77,25 +77,26 @@ function chordBlock(minimal) {
   return steps;
 }
 
-function staffBlock(minimal) {
+// Bloque de lectura en una clave. kind: 'n' clave de sol, 'b' clave de fa.
+function staffBlock(kind, minimal, size) {
   const steps = [];
-  let known = store.unlocked('n');
+  let known = store.unlocked(kind);
 
   // Notas que quedaron sin presentar porque una sesión anterior se interrumpió.
-  const unseen = known.filter((midi) => store.stat('n', midi).seen === 0 && store.stat('n', midi).box < 3);
-  const fresh = minimal && known.length ? [] : store.nextNew('n');
-  if (known.length) steps.push(...noteCards(known, minimal ? 5 : 6));
+  const unseen = known.filter((midi) => store.stat(kind, midi).seen === 0 && store.stat(kind, midi).box < 3);
+  const fresh = minimal && known.length ? [] : store.nextNew(kind);
+  if (known.length) steps.push(...noteCards(kind, known, minimal ? 3 : size.review));
   for (const midi of [...unseen, ...fresh]) {
-    store.unlock('n', midi);
-    steps.push({ type: 'intro', midi });
-    steps.push({ type: 'card', midi, guided: true });
+    store.unlock(kind, midi);
+    steps.push({ type: 'intro', kind, midi });
+    steps.push({ type: 'card', kind, midi, guided: true });
   }
-  known = store.unlocked('n');
+  known = store.unlocked(kind);
   const boost = [...unseen, ...fresh];
-  if (!minimal || boost.length) steps.push(...noteCards(known, boost.length ? 8 : 6, boost));
+  if (!minimal || boost.length) steps.push(...noteCards(kind, known, boost.length ? size.withNew : size.plain, boost));
   if (known.length >= 2) {
-    const n = minimal ? 1 : 3;
-    for (let i = 0; i < n; i++) steps.push(phrase(known));
+    const n = minimal ? 1 : size.phrases;
+    for (let i = 0; i < n; i++) steps.push(phrase(kind, known));
   }
   return steps;
 }
@@ -106,12 +107,14 @@ export function buildSession({ minimal = false } = {}) {
   if (!minimal) steps.push(...theorySteps());
   steps.push({ type: 'section', title: 'Acordes', text: 'Lee el símbolo y arma el acorde.' });
   steps.push(...chordBlock(minimal));
-  steps.push({ type: 'section', title: 'Pentagrama', text: 'Lee la nota y tócala.' });
-  steps.push(...staffBlock(minimal));
+  steps.push({ type: 'section', title: 'Mano derecha', text: 'Lee la nota en clave de sol y tócala.' });
+  steps.push(...staffBlock('n', minimal, { review: 5, withNew: 6, plain: 4, phrases: 2 }));
+  steps.push({ type: 'section', title: 'Mano izquierda', text: 'Lee la nota en clave de fa y tócala con la izquierda.' });
+  steps.push(...staffBlock('b', minimal, { review: 4, withNew: 5, plain: 3, phrases: 2 }));
   return steps;
 }
 
 // Prueba de nivel: las 12 notas, una vez cada una, en orden mezclado.
 export function buildPlacement(midis) {
-  return [...midis].sort(() => Math.random() - 0.5).map((midi) => ({ type: 'card', midi, placement: true }));
+  return [...midis].sort(() => Math.random() - 0.5).map((midi) => ({ type: 'card', kind: 'n', midi, placement: true }));
 }

@@ -1,6 +1,6 @@
 // Permite abrir la app sin conexión. Siempre intenta primero la versión más
 // reciente de la red y solo usa la copia guardada si no hay internet.
-const CACHE = 'tenpiano-v5';
+const CACHE = 'tenpiano-v6';
 
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()));

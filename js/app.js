@@ -1,6 +1,6 @@
 import {
   NOTES, NOTE_BY_MIDI, MAX_BOX, LESSONS, TOTAL_LESSONS, TRACKS, SESSION_PARTS, GOALS,
-  CHORDS, CHORD_BY_ID, CHORD_LEVELS, chordText,
+  CHORDS, CHORD_BY_ID, CHORD_LEVELS, chordText, BASS_NOTES, noteInfo, ALL_NOTES_COUNT,
 } from './data.js';
 import * as store from './store.js';
 import { buildSession, buildPlacement } from './session.js';
@@ -21,7 +21,7 @@ function pickNotation() {
 
 function progress() {
   const chordsFirm = store.firmCount('c');
-  const notesFirm = store.firmCount('n');
+  const notesFirm = store.firmCount('n') + store.firmCount('b');
   const lessons = store.lessonsDone('chords') + store.lessonsDone('staff');
   return { chordsFirm, notesFirm, lessons };
 }
@@ -90,7 +90,7 @@ function renderHome() {
       <div class="row-between"><h2>Tu avance</h2><button class="link" id="path">Ver plan</button></div>
       <div class="rings">
         <div>${ring(pct(p.chordsFirm, CHORDS.length), `${p.chordsFirm}/${CHORDS.length}`)}<div class="small"><strong>Acordes</strong></div></div>
-        <div>${ring(pct(p.notesFirm, NOTES.length), `${p.notesFirm}/${NOTES.length}`, { color: 'url(#g-violet)' })}<div class="small"><strong>Pentagrama</strong></div></div>
+        <div>${ring(pct(p.notesFirm, ALL_NOTES_COUNT), `${p.notesFirm}/${ALL_NOTES_COUNT}`, { color: 'url(#g-violet)' })}<div class="small"><strong>Pentagrama</strong></div></div>
         <div>${ring(pct(p.lessons, TOTAL_LESSONS), `${p.lessons}/${TOTAL_LESSONS}`, { color: 'url(#g-warm)' })}<div class="small"><strong>Teoría</strong></div></div>
       </div>
       <p class="eyebrow">Tu meta</p>
@@ -226,7 +226,7 @@ function lessonHtml(track, index) {
 
 function paintLesson(track, index) {
   const l = LESSONS[track][index];
-  if (l.staff) drawExample($('#example'), l.staff);
+  if (l.staff) drawExample($('#example'), l.staff, l.clef || 'treble');
   if (l.keyboard) drawKeyboard($('#keys'), { highlight: l.keyboard, labels: true });
   if (l.key) drawKeyboard($('#keys'), { highlight: l.key });
   if (l.chord) drawKeyboard($('#keys'), { highlight: CHORD_BY_ID.get(l.chord).midis.map(foldToKeyboard) });
@@ -458,11 +458,15 @@ function renderChordName(step) {
 
 // ---------- pentagrama ----------
 
+const CLEF = { n: 'treble', b: 'bass' };
+const KEY_BASE = { n: 60, b: 48 };
+
 function renderIntro(step) {
-  const n = NOTE_BY_MIDI.get(step.midi);
+  const kind = step.kind || 'n';
+  const n = noteInfo(kind, step.midi);
   sessionShell(`
     <section class="stack">
-      <p class="small muted center">Nota nueva</p>
+      <p class="small muted center">Nota nueva · clave de ${kind === 'b' ? 'fa' : 'sol'}</p>
       <h2 class="center">${n.label}</h2>
       <div class="paper staff-single" id="staff"></div>
       <p>${n.where}</p>
@@ -472,13 +476,16 @@ function renderIntro(step) {
     <div class="spacer"></div>
     <button class="btn btn-primary" id="ok">Entendido, quiero tocarla</button>
   `);
-  drawStaff($('#staff'), [step.midi]);
-  drawKeyboard($('#keys'), { highlight: step.midi, labels: true });
+  drawStaff($('#staff'), [step.midi], [], CLEF[kind]);
+  drawKeyboard($('#keys'), { highlight: step.midi, labels: true, base: KEY_BASE[kind] });
   $('#ok').onclick = nextStep;
 }
 
 // Tarjeta de una nota o frase de varias.
 function renderPlay(step) {
+  const kind = step.kind || 'n';
+  const info = (midi) => noteInfo(kind, midi);
+  const hand = kind === 'b' ? ' con la mano izquierda' : '';
   const isPhrase = step.type === 'phrase';
   const targets = isPhrase ? step.midis : [step.midi];
   const play = { pos: 0, attempts: 0, shownAt: performance.now(), locked: false, hinted: !!step.guided };
@@ -487,7 +494,7 @@ function renderPlay(step) {
   sessionShell(`
     <section class="stack">
       ${step.placement ? '<p class="eyebrow center">Prueba de nivel</p>' : ''}
-      <p class="prompt">${isPhrase ? 'Lee y toca las notas en orden' : step.guided ? `Toca ${NOTE_BY_MIDI.get(step.midi).label} en tu teclado` : 'Toca esta nota'}</p>
+      <p class="prompt">${isPhrase ? `Lee y toca las notas en orden${hand}` : step.guided ? `Toca ${info(step.midi).label}${hand || ' en tu teclado'}` : `Toca esta nota${hand}`}</p>
       <div class="paper ${isPhrase ? '' : 'staff-single'}" id="staff"></div>
       <p class="feedback" id="feedback" role="status"></p>
       ${listenRow()}
@@ -508,12 +515,13 @@ function renderPlay(step) {
 
   const draw = () => {
     const states = targets.map((_, i) => (i < play.pos ? 'done' : i === play.pos ? 'current' : 'todo'));
-    drawStaff(staffEl, targets, states);
+    drawStaff(staffEl, targets, states, CLEF[kind]);
   };
   const drawKeys = () => {
     drawKeyboard(keysEl, {
       highlight: play.hinted ? targets[play.pos] : null,
       labels: play.hinted,
+      base: KEY_BASE[kind],
       onPress: (midi) => answer(midi),
     });
   };
@@ -529,13 +537,13 @@ function renderPlay(step) {
 
   draw();
   drawKeys();
-  if (showNames && !isPhrase) setFb(NOTE_BY_MIDI.get(targets[0]).label, 'feedback-hint');
+  if (showNames && !isPhrase) setFb(info(targets[0]).label, 'feedback-hint');
 
   function giveHint() {
     play.hinted = true;
     keysEl.hidden = false;
     drawKeys();
-    const n = NOTE_BY_MIDI.get(targets[play.pos]);
+    const n = info(targets[play.pos]);
     setFb(`Es ${n.label}. ${n.where}`, 'feedback-hint');
   }
 
@@ -544,7 +552,7 @@ function renderPlay(step) {
     play.locked = true;
     if (ok) session.placed.push(targets[0]);
     flash(ok ? 'paper-good' : 'paper-bad');
-    setFb(ok ? 'Correcto.' : `Era ${NOTE_BY_MIDI.get(targets[0]).label}.`, ok ? 'feedback-good' : 'feedback-bad');
+    setFb(ok ? 'Correcto.' : `Era ${info(targets[0]).label}.`, ok ? 'feedback-good' : 'feedback-bad');
     setTimeout(nextStep, ok ? 500 : 1200);
   }
 
@@ -560,17 +568,17 @@ function renderPlay(step) {
     if (right) {
       const ms = performance.now() - play.shownAt;
       const firstTry = play.attempts === 0 && !(play.hinted && !step.guided);
-      store.record('n', target, firstTry, ms);
-      tally(firstTry, NOTE_BY_MIDI.get(target).label);
+      store.record(kind, target, firstTry, ms);
+      tally(firstTry, info(target).label);
 
       // Si costó, la misma nota vuelve un poco más adelante (una sola vez).
       if (!firstTry && !isPhrase && !step.retry) {
         const at = Math.min(session.steps.length, session.index + 4);
-        session.steps.splice(at, 0, { type: 'card', midi: target, retry: true });
+        session.steps.splice(at, 0, { type: 'card', kind, midi: target, retry: true });
       }
 
       flash('paper-good');
-      setFb(`Correcto: ${NOTE_BY_MIDI.get(target).label}`, 'feedback-good');
+      setFb(`Correcto: ${info(target).label}`, 'feedback-good');
       play.pos += 1;
       play.attempts = 0;
       play.hinted = false;
@@ -588,7 +596,7 @@ function renderPlay(step) {
 
     if (sameClass) {
       flash('paper-bad');
-      setFb(`Es ${NOTE_BY_MIDI.get(target).name}, pero en otra altura. Búscala más ${midi > target ? 'a la izquierda' : 'a la derecha'}.`, 'feedback-bad');
+      setFb(`Es ${info(target).name}, pero en otra altura. Búscala más ${midi > target ? 'a la izquierda' : 'a la derecha'}.`, 'feedback-bad');
       return;
     }
 
@@ -636,8 +644,10 @@ function finishSession() {
   const newChords = store.nextNew('c');
   if (newChords.length) next.push(`Acordes nuevos: ${newChords.map((id) => CHORD_BY_ID.get(id).letters).join(' y ')}.`);
   const newNotes = store.nextNew('n');
-  if (newNotes.length) next.push(`Notas nuevas: ${newNotes.map((m) => NOTE_BY_MIDI.get(m).label).join(' y ')}.`);
-  if (!newChords.length && !newNotes.length) next.push('Toca afirmar lo que ya viste antes de sumar algo nuevo.');
+  if (newNotes.length) next.push(`Notas nuevas en clave de sol: ${newNotes.map((m) => NOTE_BY_MIDI.get(m).label).join(' y ')}.`);
+  const newBass = store.nextNew('b');
+  if (newBass.length) next.push(`Notas nuevas en clave de fa: ${newBass.map((m) => noteInfo('b', m).label).join(' y ')}.`);
+  if (!newChords.length && !newNotes.length && !newBass.length) next.push('Toca afirmar lo que ya viste antes de sumar algo nuevo.');
 
   const mins = Math.floor(seconds / 60);
   const secs = seconds % 60;
@@ -740,6 +750,11 @@ function renderPath() {
     return `<span class="chip ${s ? '' : 'chip-locked'}">${n.label}${dots(s ? s.box : 0)}</span>`;
   }).join('');
 
+  const bassChips = BASS_NOTES.map((n) => {
+    const s = store.stat('b', n.midi);
+    return `<span class="chip ${s ? '' : 'chip-locked'}">${n.label}${dots(s ? s.box : 0)}</span>`;
+  }).join('');
+
   const lessonRows = (track) => LESSONS[track].map((l, i) => {
     const done = store.lessonsDone(track);
     return `<li class="${i < done ? 'lesson-done' : ''}"><button class="lesson-row" data-track="${track}" data-lesson="${i}">
@@ -773,9 +788,12 @@ function renderPath() {
       <p class="small muted">${p.chordsFirm} de ${CHORDS.length} firmes. Los básicos se dan por conocidos y solo se repasan.</p>
       ${chordLevels}
       <h2>Notas en el pentagrama</h2>
-      <p class="small muted">${p.notesFirm} de ${NOTES.length} firmes.</p>
+      <p class="small muted">${p.notesFirm} de ${ALL_NOTES_COUNT} firmes.</p>
+      <p class="small"><strong>Clave de sol · mano derecha</strong></p>
       <div class="chip-row">${noteChips}</div>
-      <button class="btn" id="placement">${store.getState().placementDone ? 'Repetir la prueba de nivel' : 'Hacer la prueba de nivel'}<small>12 notas, 1 minuto. Las que aciertes quedan como firmes.</small></button>
+      <p class="small"><strong>Clave de fa · mano izquierda</strong></p>
+      <div class="chip-row">${bassChips}</div>
+      <button class="btn" id="placement">${store.getState().placementDone ? 'Repetir la prueba de nivel' : 'Hacer la prueba de nivel'}<small>Las 12 notas de clave de sol, 1 minuto. Las que aciertes quedan como firmes.</small></button>
     </section>
 
     <section class="card stack">
@@ -783,7 +801,7 @@ function renderPath() {
       <ul class="plain-list">
         <li>Cada nota y cada acorde tiene cinco niveles de dominio. Sube uno cuando aciertas al primer intento y sin demorarte.</li>
         <li>Si fallas, baja dos niveles y vuelve a aparecer pronto.</li>
-        <li>Llegan hasta dos notas y dos acordes nuevos por sesión, cuando todo lo anterior está en nivel 2 o más.</li>
+        <li>Llegan hasta dos acordes y dos notas nuevas de cada clave por sesión, cuando lo anterior de ese grupo está en nivel 2 o más.</li>
         <li>Algo cuenta como firme desde el nivel 3, y a partir de ahí se repasa cada vez más espaciado.</li>
       </ul>
     </section>
@@ -882,6 +900,13 @@ function renderSettings(keepScroll = 0) {
         <input type="checkbox" id="names" ${s.showNames ? 'checked' : ''}>
       </label>
     </section>
+    <section class="card stack" id="backup-box">
+      <p><strong>Copia de seguridad</strong></p>
+      <p class="small muted">Tu progreso vive solo en este dispositivo. Guarda una copia para no perderlo, o para pasarlo a otro dispositivo.</p>
+      <button class="btn" id="backup">Guardar una copia</button>
+      <button class="btn" id="restore">Restaurar una copia</button>
+      <p class="feedback left" id="backup-msg" role="status" hidden></p>
+    </section>
     <section class="card stack" id="reset-box">
       <p><strong>Reiniciar el progreso</strong></p>
       <p class="small muted">Borra lo aprendido y la racha de este dispositivo. Tus canciones se conservan.</p>
@@ -895,6 +920,44 @@ function renderSettings(keepScroll = 0) {
       renderSettings(window.scrollY || 1);
     };
   });
+  const say = (text, cls) => {
+    const el = $('#backup-msg');
+    el.hidden = false;
+    el.textContent = text;
+    el.className = 'feedback left ' + cls;
+  };
+  $('#backup').onclick = async () => {
+    const text = store.exportData();
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: 'Copia de TenPiano', text });
+        say('Copia compartida. Guárdala en Notas, Archivos o envíatela por correo.', 'feedback-good');
+        return;
+      }
+    } catch (e) {
+      if (e && e.name === 'AbortError') return;
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+      say('Copia en el portapapeles. Pégala en una nota o un correo para guardarla.', 'feedback-good');
+    } catch (e) {
+      say('No se pudo copiar automáticamente. Usa "Restaurar una copia" para ver el texto y copiarlo a mano.', 'feedback-bad');
+    }
+  };
+  $('#restore').onclick = () => {
+    $('#backup-box').innerHTML = `
+      <p><strong>Restaurar una copia</strong></p>
+      <label class="field"><span class="small muted">Pega aquí el texto de la copia. Reemplaza el progreso actual.</span>
+        <textarea id="backup-text" rows="5" autocomplete="off" autocapitalize="off" spellcheck="false"></textarea>
+      </label>
+      <p class="feedback left" id="backup-msg" role="status" hidden></p>
+      <div class="row"><button class="btn" id="cancel-restore">Cancelar</button><button class="btn btn-primary" id="do-restore">Restaurar</button></div>`;
+    $('#cancel-restore').onclick = () => renderSettings();
+    $('#do-restore').onclick = () => {
+      if (store.importData($('#backup-text').value.trim())) renderHome();
+      else say('Ese texto no es una copia válida de TenPiano.', 'feedback-bad');
+    };
+  };
   $('#strict').onchange = (e) => store.setSetting('strictOctave', e.target.checked);
   $('#names').onchange = (e) => store.setSetting('showNames', e.target.checked);
   $('#reset').onclick = () => {

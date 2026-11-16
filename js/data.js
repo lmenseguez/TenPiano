@@ -66,6 +66,57 @@ export const NOTES = [
 
 export const NOTE_BY_MIDI = new Map(NOTES.map((n) => [n.midi, n]));
 
+// Notas en clave de fa, para la mano izquierda. Van del Do grave al Do central.
+export const BASS_NOTES = [
+  {
+    midi: 53, key: 'f/3', name: 'Fa', label: 'Fa grave',
+    where: 'Va sobre la cuarta línea, la que queda entre los dos puntos de la clave de fa.',
+    link: 'Es el Fa que está a la izquierda del Do central, cinco teclas blancas antes.',
+  },
+  {
+    midi: 60, key: 'c/4', name: 'Do', label: 'Do central',
+    where: 'En clave de fa va en una línea corta propia, por encima del pentagrama.',
+    link: 'Es la misma tecla que el Do central de la clave de sol: ahí se encuentran las dos manos.',
+  },
+  {
+    midi: 48, key: 'c/3', name: 'Do', label: 'Do grave',
+    where: 'Va en el segundo espacio, contando desde abajo.',
+    link: 'Es el Do que está ocho teclas blancas a la izquierda del Do central.',
+  },
+  {
+    midi: 55, key: 'g/3', name: 'Sol', label: 'Sol grave',
+    where: 'Va en el cuarto espacio, el de más arriba.',
+    link: 'Es la tecla blanca que sigue al Fa grave.',
+  },
+  {
+    midi: 57, key: 'a/3', name: 'La', label: 'La grave',
+    where: 'Va sobre la quinta línea, la de más arriba.',
+    link: 'Es la base de tu acorde de La menor cuando lo tocas con la izquierda.',
+  },
+  {
+    midi: 52, key: 'e/3', name: 'Mi', label: 'Mi grave',
+    where: 'Va en el tercer espacio.',
+    link: 'Es la tecla blanca anterior al Fa grave.',
+  },
+  {
+    midi: 50, key: 'd/3', name: 'Re', label: 'Re grave',
+    where: 'Va sobre la tercera línea, la del centro.',
+    link: 'Es la tecla blanca que sigue al Do grave.',
+  },
+  {
+    midi: 59, key: 'b/3', name: 'Si', label: 'Si grave',
+    where: 'Va justo encima de la quinta línea, apoyada sobre ella.',
+    link: 'Es la tecla blanca anterior al Do central.',
+  },
+];
+export const BASS_BY_MIDI = new Map(BASS_NOTES.map((n) => [n.midi, n]));
+
+// Datos de una nota según la clave en que se lee: 'n' clave de sol, 'b' clave de fa.
+export function noteInfo(kind, midi) {
+  return (kind === 'b' ? BASS_BY_MIDI : NOTE_BY_MIDI).get(midi);
+}
+export const ALL_NOTES_COUNT = NOTES.length + BASS_NOTES.length;
+
 // Cuántas notas se presentan en la primera sesión.
 export const FIRST_SESSION_NOTES = 3;
 // Cuántas notas o acordes nuevos puede traer una sesión.
@@ -162,7 +213,7 @@ export function chordText(chord, notation) {
 export const SESSION_PARTS = [
   { title: 'Teoría', time: '2 min', text: 'Una lección corta, alternando acordes y pentagrama, con una pregunta para comprobar que quedó clara.' },
   { title: 'Acordes', time: '4 min', text: 'Lees un símbolo (Dm, Sol7) y armas el acorde, o ves las teclas y dices qué acorde es.' },
-  { title: 'Pentagrama', time: '4 min', text: 'Lees notas y frases en el pentagrama y las tocas en tu teclado.' },
+  { title: 'Pentagrama', time: '4 min', text: 'Lees notas y frases en clave de sol con la mano derecha, y en clave de fa con la izquierda.' },
 ];
 
 export const TRACKS = [
@@ -187,7 +238,8 @@ export const TRACKS = [
       { title: 'Notas en clave de sol', ready: true, topics: ['El pentagrama y la clave de sol', 'Las 12 notas, del Do central al Sol agudo', 'Pasos, saltos y octavas'] },
       { title: 'Canciones en partitura', ready: true, topics: ['Melodías conocidas de dominio público', 'Acordes escritos sobre la melodía', 'Negras, blancas y corcheas'] },
       { title: 'El ritmo', ready: false, topics: ['Pulso y compás: 4/4 y 3/4', 'Corcheas y semicorcheas', 'Contar mientras tocas'] },
-      { title: 'La clave de fa', ready: false, topics: ['Las notas de la mano izquierda', 'El pentagrama doble del piano', 'Arpegios y patrón de vals'] },
+      { title: 'La clave de fa', ready: true, topics: ['Las 8 notas de la mano izquierda, del Do grave al Do central', 'El pentagrama doble del piano'] },
+      { title: 'Patrones de mano izquierda', ready: false, topics: ['Arpegios', 'Patrón de vals'] },
       { title: 'Sostenidos y bemoles en el pentagrama', ready: false, topics: ['Alteraciones', 'Armaduras: tres sostenidos, tonalidades menores'] },
       { title: 'Notas fuera del pentagrama', ready: false, topics: ['Líneas adicionales por arriba', 'Cambios de octava'] },
       { title: 'Las dos manos leyendo', ready: false, topics: ['Manos separadas y luego juntas', 'Tus piezas meta, por secciones'] },
@@ -202,7 +254,8 @@ export const GOALS = [
     needs: [
       { text: 'Acordes F#m, D, A y E, su progresión principal', track: 'chords', ready: true },
       { text: 'Leer las notas en clave de sol', track: 'staff', ready: true },
-      { text: 'Mano izquierda en arpegios, en clave de fa', track: 'staff', ready: false },
+      { text: 'Leer las notas en clave de fa', track: 'staff', ready: true },
+      { text: 'Mano izquierda en arpegios', track: 'staff', ready: false },
       { text: 'Armadura de tres sostenidos', track: 'staff', ready: false },
       { text: 'Corcheas y semicorcheas', track: 'staff', ready: false },
       { text: 'Notas agudas por encima del pentagrama', track: 'staff', ready: false },
@@ -214,7 +267,8 @@ export const GOALS = [
       { text: 'Acordes menores y séptimas', track: 'chords', ready: true },
       { text: 'Leer las notas en clave de sol', track: 'staff', ready: true },
       { text: 'Compás de 3/4 y ritmo de vals', track: 'staff', ready: false },
-      { text: 'Mano izquierda con patrón de vals, en clave de fa', track: 'staff', ready: false },
+      { text: 'Leer las notas en clave de fa', track: 'staff', ready: true },
+      { text: 'Mano izquierda con patrón de vals', track: 'staff', ready: false },
       { text: 'Tonalidad menor con alteraciones', track: 'staff', ready: false },
     ],
   },
@@ -378,6 +432,38 @@ const STAFF_LESSONS = [
       options: ['Porque dura más que las otras notas', 'Porque queda por debajo de las cinco líneas', 'Porque se toca con la mano izquierda'],
       answer: 1,
       why: 'Es más grave que la primera línea, y la línea adicional extiende el pentagrama hacia abajo.',
+    },
+  },
+  {
+    title: 'La clave de fa',
+    body: [
+      'El piano usa dos claves. La clave de sol es para la mano derecha; la clave de fa, para la izquierda, con las notas graves.',
+      'La clave de fa tiene dos puntos que encierran la cuarta línea: esa línea es Fa. Desde ahí se deducen las demás, igual que con el Sol en la otra clave.',
+      'Atención: las mismas líneas y espacios nombran notas distintas en cada clave. Por eso se practican por separado.',
+    ],
+    clef: 'bass',
+    staff: [{ key: 'f/3', label: 'Fa' }],
+    quiz: {
+      q: '¿Qué línea señalan los dos puntos de la clave de fa?',
+      options: ['La segunda línea', 'La cuarta línea', 'La quinta línea'],
+      answer: 1,
+      why: 'Los dos puntos encierran la cuarta línea, que es Fa.',
+    },
+  },
+  {
+    title: 'Dónde se encuentran las dos manos',
+    body: [
+      'En una partitura de piano hay dos pentagramas unidos: arriba el de clave de sol y abajo el de clave de fa.',
+      'El Do central queda justo en el medio. En clave de sol se escribe con una línea adicional por debajo; en clave de fa, con una línea adicional por encima. Es la misma tecla.',
+      'Desde el Do central, la clave de fa baja: Si, La, Sol, Fa, hacia la izquierda del teclado.',
+    ],
+    clef: 'bass',
+    staff: [{ key: 'c/4', label: 'Do central' }, { key: 'b/3', label: 'Si' }, { key: 'a/3', label: 'La' }, { key: 'g/3', label: 'Sol' }, { key: 'f/3', label: 'Fa' }],
+    quiz: {
+      q: 'El Do central escrito en clave de fa, ¿dónde va?',
+      options: ['En una línea adicional por encima del pentagrama', 'En la primera línea', 'En el segundo espacio'],
+      answer: 0,
+      why: 'Es más agudo que la quinta línea de la clave de fa, así que lleva una línea adicional arriba.',
     },
   },
   {

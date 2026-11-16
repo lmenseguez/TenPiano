@@ -43,7 +43,7 @@ export class MicListener {
     // Filtros: quitan el zumbido grave y el siseo agudo que confunden la detección.
     const highpass = this.ctx.createBiquadFilter();
     highpass.type = 'highpass';
-    highpass.frequency.value = 180;
+    highpass.frequency.value = 90;
     const lowpass = this.ctx.createBiquadFilter();
     lowpass.type = 'lowpass';
     lowpass.frequency.value = 2600;
