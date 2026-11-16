@@ -318,3 +318,72 @@ button {
 .part { display: flex; gap: 12px; align-items: baseline; padding: 8px 0; border-bottom: 1px solid var(--line); }
 .part:last-child { border-bottom: none; }
 .part-time { flex: none; width: 82px; font-size: 0.85rem; color: var(--muted); }
+
+/* Acordes */
+.left { text-align: left; }
+.symbol {
+  font-size: 3.4rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  text-align: center;
+  padding: 18px 8px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.symbol-good { border-color: var(--good); box-shadow: 0 0 0 3px color-mix(in srgb, var(--good) 30%, transparent); }
+.symbol-bad { border-color: var(--bad); box-shadow: 0 0 0 3px color-mix(in srgb, var(--bad) 25%, transparent); }
+.key-sel { fill: #01dbb8; }
+.key-white.key-hi.key-sel, .key-black.key-hi.key-sel { fill: #00a88d; }
+.options-grid { display: grid; grid-template-columns: 1fr 1fr; }
+.option.center { text-align: center; font-size: 1.15rem; font-weight: 700; }
+
+/* Plan */
+.chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip-row .chip { padding: 6px 10px 5px; font-weight: 600; }
+.dots-inline { margin-top: 4px; }
+.goal { padding: 8px 0; border-top: 1px solid var(--line); }
+.check-list { list-style: none; margin: 6px 0 0; padding: 0; }
+.check-list li { display: flex; gap: 8px; margin: 3px 0; }
+.check-list li > span:first-child { color: var(--line); flex: none; }
+.check-on > span:first-child { color: var(--brand) !important; }
+.setting-block { display: block; }
+.setting-block .seg { margin-top: 8px; }
+
+/* Canciones */
+.chart { display: grid; grid-template-columns: repeat(var(--cols, 4), 1fr); gap: 6px; }
+.chart-cell {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  min-height: 62px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 2px;
+  cursor: pointer;
+}
+.chart-main { font-size: 1.25rem; font-weight: 800; }
+.chart-sub { font-size: 0.72rem; color: var(--muted); }
+.chart-now { background: var(--brand); border-color: var(--brand); color: #04193a; }
+.chart-now .chart-sub { color: #04193a; }
+.beats { display: flex; justify-content: center; gap: 10px; }
+.beat { width: 14px; height: 14px; border-radius: 50%; background: var(--line); }
+.beat-on { background: var(--brand); }
+.beat-on:first-child { background: var(--ink); }
+.field { display: flex; flex-direction: column; gap: 6px; font-weight: 600; }
+.field input, .field textarea {
+  font: inherit;
+  font-weight: 400;
+  color: var(--ink);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px;
+  width: 100%;
+}
+.field textarea { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1.05rem; resize: vertical; }
+.field input:focus-visible, .field textarea:focus-visible { outline: 3px solid var(--accent); outline-offset: 1px; }
+.paper-next { opacity: 0.55; }

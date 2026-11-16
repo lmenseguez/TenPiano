@@ -1,5 +1,8 @@
 // Progreso guardado en el dispositivo (localStorage).
-import { NOTES, LESSONS, INTERVALS, MAX_BOX, FLUENT_MS, FIRST_SESSION_NOTES } from './data.js';
+import {
+  NOTES, CHORDS, KNOWN_CHORDS, LESSONS, INTERVALS, MAX_BOX, FLUENT_MS, FLUENT_CHORD_MS,
+  FIRST_SESSION_NOTES, NEW_PER_SESSION,
+} from './data.js';
 
 const KEY = 'tenpiano.v1';
 const MAX_FREEZES = 2;
@@ -19,20 +22,22 @@ export function daysBetween(a, b) {
 
 function addDays(dateStr, n) {
   const [y, m, d] = dateStr.split('-').map(Number);
-  const dt = new Date(y, m - 1, d + n);
-  return todayStr(dt);
+  return todayStr(new Date(y, m - 1, d + n));
 }
 
 function fresh() {
   return {
-    version: 1,
+    version: 2,
     notes: {}, // midi -> { box, due, seen, right, wrong, totalMs }
+    chords: {}, // id -> igual
+    lessons: { chords: 0, staff: 0 }, // lecciones completadas por camino
+    placementDone: false,
     streak: 0,
     lastDay: null,
     freezes: 1,
-    lessonsDone: 0, // cuántas lecciones de teoría completó
     sessions: [], // { day, cards, firstTry, seconds, minimal }
-    settings: { input: 'mic', strictOctave: true, showNames: false },
+    mySongs: [], // { id, title, text }
+    settings: { input: 'mic', strictOctave: true, showNames: false, notation: 'both', tempo: 70, click: true },
   };
 }
 
@@ -44,7 +49,12 @@ export function load() {
     const raw = localStorage.getItem(KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      state = { ...fresh(), ...parsed, settings: { ...fresh().settings, ...(parsed.settings || {}) } };
+      const base = fresh();
+      state = { ...base, ...parsed, settings: { ...base.settings, ...(parsed.settings || {}) } };
+      // Datos de la versión anterior: una sola lista de lecciones, de pentagrama.
+      if (!parsed.lessons) state.lessons = { chords: 0, staff: Math.min(parsed.lessonsDone || 0, LESSONS.staff.length) };
+      delete state.lessonsDone;
+      state.version = 2;
     }
   } catch (e) {
     memoryOnly = true;
@@ -60,18 +70,15 @@ export function save() {
   }
 }
 
-export function isMemoryOnly() {
-  return memoryOnly;
-}
-
-export function getState() {
-  return state;
-}
+export const isMemoryOnly = () => memoryOnly;
+export const getState = () => state;
 
 export function resetAll() {
   const settings = state.settings;
+  const mySongs = state.mySongs;
   state = fresh();
   state.settings = settings;
+  state.mySongs = mySongs;
   save();
 }
 
@@ -80,41 +87,52 @@ export function setSetting(name, value) {
   save();
 }
 
-// ---- Notas ----
+// ---- Notas y acordes: mismo sistema de repaso ----
+// kind: 'n' (notas, por número MIDI) o 'c' (acordes, por símbolo).
 
-export function unlockedNotes() {
-  return NOTES.filter((n) => state.notes[n.midi]);
+const table = (kind) => (kind === 'c' ? state.chords : state.notes);
+const catalog = (kind) => (kind === 'c' ? CHORDS.map((c) => c.id) : NOTES.map((n) => n.midi));
+
+export function stat(kind, id) {
+  return table(kind)[id] || null;
+}
+export const noteStat = (midi) => stat('n', midi);
+
+export function unlocked(kind) {
+  return catalog(kind).filter((id) => table(kind)[id]);
+}
+export const unlockedNotes = () => NOTES.filter((n) => state.notes[n.midi]);
+
+export function unlock(kind, id, box = 0, today = todayStr()) {
+  const t = table(kind);
+  if (!t[id]) t[id] = { box, due: today, seen: 0, right: 0, wrong: 0, totalMs: 0 };
 }
 
-export function noteStat(midi) {
-  return state.notes[midi] || null;
+// Lo próximo por presentar, si lo anterior ya está firme.
+export function nextNew(kind) {
+  const have = unlocked(kind);
+  const pending = catalog(kind).filter((id) => !table(kind)[id]);
+  if (!pending.length) return [];
+  if (kind === 'n' && have.length < FIRST_SESSION_NOTES) return pending.slice(0, FIRST_SESSION_NOTES - have.length);
+  const firm = have.every((id) => table(kind)[id].box >= 2);
+  return firm ? pending.slice(0, NEW_PER_SESSION) : [];
 }
 
-export function unlock(midi, today = todayStr()) {
-  if (!state.notes[midi]) {
-    state.notes[midi] = { box: 0, due: today, seen: 0, right: 0, wrong: 0, totalMs: 0 };
-  }
-}
-
-// La siguiente nota nueva, si las actuales ya están firmes.
-export function nextNewNote() {
-  const unlocked = unlockedNotes();
-  const next = NOTES.find((n) => !state.notes[n.midi]);
-  if (!next) return null;
-  if (unlocked.length < FIRST_SESSION_NOTES) return next;
-  const firm = unlocked.every((n) => state.notes[n.midi].box >= 2);
-  return firm ? next : null;
+// Al empezar, los acordes básicos se dan por conocidos (solo se repasan).
+export function ensureKnownChords() {
+  if (Object.keys(state.chords).length) return;
+  for (const id of KNOWN_CHORDS) unlock('c', id, 1);
 }
 
 // Registra una respuesta. firstTry: acertó al primer intento.
-export function recordAnswer(midi, firstTry, ms, today = todayStr()) {
-  const s = state.notes[midi];
+export function record(kind, id, firstTry, ms, today = todayStr()) {
+  const s = table(kind)[id];
   if (!s) return;
   s.seen += 1;
   if (firstTry) {
     s.right += 1;
     s.totalMs += ms;
-    if (ms <= FLUENT_MS) s.box = Math.min(MAX_BOX, s.box + 1);
+    if (ms <= (kind === 'c' ? FLUENT_CHORD_MS : FLUENT_MS)) s.box = Math.min(MAX_BOX, s.box + 1);
   } else {
     s.wrong += 1;
     s.box = Math.max(0, s.box - 2);
@@ -122,9 +140,9 @@ export function recordAnswer(midi, firstTry, ms, today = todayStr()) {
   s.due = addDays(today, INTERVALS[s.box]);
 }
 
-// Peso para elegir tarjetas: más alto si la nota es débil o le toca repaso.
-export function noteWeight(midi, today = todayStr()) {
-  const s = state.notes[midi];
+// Peso para elegir tarjetas: más alto si es débil o le toca repaso.
+export function weight(kind, id, today = todayStr()) {
+  const s = table(kind)[id];
   if (!s) return 0;
   let w = (MAX_BOX + 1 - s.box) * 2;
   if (daysBetween(s.due, today) >= 0) w += 4;
@@ -132,9 +150,35 @@ export function noteWeight(midi, today = todayStr()) {
   return w;
 }
 
+export function firmCount(kind) {
+  return unlocked(kind).filter((id) => table(kind)[id].box >= 3).length;
+}
+
+// Resultado de la prueba de nivel: las notas acertadas quedan firmes.
+export function applyPlacement(knownMidis) {
+  for (const midi of knownMidis) {
+    unlock('n', midi, 3);
+    state.notes[midi].box = Math.max(state.notes[midi].box, 3);
+  }
+  state.placementDone = true;
+  save();
+}
+
+// ---- Teoría ----
+
+export function lessonsDone(track) {
+  return Math.min(state.lessons[track] || 0, LESSONS[track].length);
+}
+
+export function completeLesson(track, index) {
+  if (index === lessonsDone(track)) {
+    state.lessons[track] = index + 1;
+    save();
+  }
+}
+
 // ---- Racha ----
 
-// Estado de la racha al día de hoy, sin modificar nada.
 export function streakStatus(today = todayStr()) {
   if (!state.lastDay) return { streak: 0, doneToday: false, freezes: state.freezes, atRisk: false, willUse: 0 };
   const gap = daysBetween(state.lastDay, today);
@@ -147,7 +191,6 @@ export function streakStatus(today = todayStr()) {
   return { streak: 0, doneToday: false, freezes: state.freezes, atRisk: false, willUse: 0, lost: state.streak };
 }
 
-// Cierra una sesión: actualiza la racha y guarda el resumen.
 export function completeSession(summary, today = todayStr()) {
   const st = streakStatus(today);
   let earnedFreeze = false;
@@ -166,7 +209,6 @@ export function completeSession(summary, today = todayStr()) {
   return { streak: state.streak, usedFreezes: st.willUse, earnedFreeze, firstToday: !st.doneToday };
 }
 
-// Minutos y precisión de los últimos 7 días.
 export function weekSummary(today = todayStr()) {
   const recent = state.sessions.filter((s) => {
     const d = daysBetween(s.day, today);
@@ -179,15 +221,16 @@ export function weekSummary(today = todayStr()) {
   return { days, minutes: Math.round(seconds / 60), accuracy: cards ? Math.round((firstTry / cards) * 100) : null };
 }
 
-// ---- Teoría ----
+// ---- Mis canciones ----
 
-export function lessonsDone() {
-  return Math.min(state.lessonsDone || 0, LESSONS.length);
+export function saveSong(song) {
+  const i = state.mySongs.findIndex((s) => s.id === song.id);
+  if (i >= 0) state.mySongs[i] = song;
+  else state.mySongs.push(song);
+  save();
 }
 
-export function completeLesson(index) {
-  if (index === lessonsDone()) {
-    state.lessonsDone = index + 1;
-    save();
-  }
+export function deleteSong(id) {
+  state.mySongs = state.mySongs.filter((s) => s.id !== id);
+  save();
 }

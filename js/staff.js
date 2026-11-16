@@ -97,13 +97,83 @@ export function drawExample(container, items) {
   svg.setAttribute('aria-label', 'Ejemplo en el pentagrama: ' + items.map((i) => i.label).filter(Boolean).join(', '));
 }
 
+// Renglón de una canción: compases con notas, duraciones y acordes escritos arriba.
+// bars: [[{ key, dur, chord, index }]], stateOf(index) -> 'done' | 'current' | 'todo'
+export function drawMelodyLine(container, bars, { time = null, stateOf = () => 'todo', chordLabel = (c) => c } = {}) {
+  container.innerHTML = '';
+  const count = bars.reduce((a, b) => a + b.length, 0);
+  const width = 360;
+  const height = 150;
+  const renderer = new VF.Renderer(container, VF.Renderer.Backends.SVG);
+  renderer.resize(width, height);
+  const ctx = renderer.getContext();
+  ctx.setFillStyle(INK);
+  ctx.setStrokeStyle(INK);
+
+  const stave = new VF.Stave(6, 34, width - 12);
+  stave.addClef('treble');
+  if (time) stave.addTimeSignature(time);
+  stave.setContext(ctx).draw();
+
+  const tickables = [];
+  const beams = [];
+  bars.forEach((bar, bi) => {
+    const notes = bar.map((n) => {
+      const note = new VF.StaveNote({ keys: [n.key], duration: n.dur, auto_stem: true });
+      if (n.dur.endsWith('d')) VF.Dot.buildAndAttach([note], { all: true });
+      const st = stateOf(n.index);
+      const color = st === 'done' ? DONE : st === 'current' ? ACCENT : INK;
+      note.setStyle({ fillStyle: color, strokeStyle: color });
+      note.setLedgerLineStyle({ fillStyle: color, strokeStyle: color });
+      if (n.chord) {
+        const ann = new VF.Annotation(chordLabel(n.chord));
+        ann.setFont('Arial', 11, 'bold');
+        ann.setVerticalJustification(VF.Annotation.VerticalJustify.TOP);
+        note.addModifier(ann, 0);
+      }
+      return note;
+    });
+    beams.push(...VF.Beam.generateBeams(notes.filter((n) => n.getDuration() === '8')));
+    tickables.push(...notes);
+    if (bi < bars.length - 1) tickables.push(new VF.BarNote());
+  });
+
+  const voice = new VF.Voice({ num_beats: 4, beat_value: 4 }).setStrict(false);
+  voice.addTickables(tickables);
+  const room = width - (time ? 96 : 70);
+  new VF.Formatter().joinVoices([voice]).format([voice], Math.min(room, 40 + count * 34));
+  voice.draw(ctx, stave);
+  beams.forEach((b) => b.setContext(ctx).draw());
+
+  const svg = container.querySelector('svg');
+  svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+  svg.removeAttribute('width');
+  svg.removeAttribute('height');
+  svg.style.width = '100%';
+  svg.style.height = 'auto';
+  svg.style.display = 'block';
+  svg.setAttribute('role', 'img');
+  svg.setAttribute('aria-label', 'Renglón de la partitura');
+}
+
 // Teclado de Do central a Sol agudo.
 const WHITE = [60, 62, 64, 65, 67, 69, 71, 72, 74, 76, 77, 79];
 const BLACK = [
   [61, 0], [63, 1], [66, 3], [68, 4], [70, 5], [73, 7], [75, 8], [78, 10],
 ];
 
-export function drawKeyboard(container, { highlight = null, onPress = null, labels = false } = {}) {
+// Lleva cualquier nota al rango del teclado en pantalla, conservando su nombre.
+export function foldToKeyboard(midi) {
+  let m = midi;
+  while (m < 60) m += 12;
+  while (m > 79) m -= 12;
+  return m;
+}
+
+// highlight: tecla o teclas resaltadas. selected: teclas marcadas por ti.
+export function drawKeyboard(container, { highlight = null, selected = [], onPress = null, labels = false } = {}) {
+  const hi = new Set(highlight === null ? [] : Array.isArray(highlight) ? highlight : [highlight]);
+  const sel = new Set(selected);
   const kw = 30;
   const kh = 110;
   const w = WHITE.length * kw;
@@ -121,7 +191,7 @@ export function drawKeyboard(container, { highlight = null, onPress = null, labe
     r.setAttribute('width', width);
     r.setAttribute('height', height);
     r.setAttribute('rx', 3);
-    r.setAttribute('class', cls + (midi === highlight ? ' key-hi' : ''));
+    r.setAttribute('class', cls + (hi.has(midi) ? ' key-hi' : '') + (sel.has(midi) ? ' key-sel' : ''));
     r.dataset.midi = midi;
     if (onPress) {
       r.addEventListener('pointerdown', (e) => {
@@ -139,24 +209,23 @@ export function drawKeyboard(container, { highlight = null, onPress = null, labe
 
   // Marca del Do central, siempre visible como referencia.
   const mark = document.createElementNS(ns, 'text');
-  mark.setAttribute('x', kw / 2);
+  mark.setAttribute('x', 2);
   mark.setAttribute('y', kh + 14);
-  mark.setAttribute('text-anchor', 'middle');
+  mark.setAttribute('text-anchor', 'start');
   mark.setAttribute('class', 'key-label');
   mark.textContent = 'Do central';
-  mark.setAttribute('x', 2);
-  mark.setAttribute('text-anchor', 'start');
   svg.appendChild(mark);
 
-  if (labels && highlight !== null) {
-    const i = WHITE.indexOf(highlight);
+  if (labels && hi.size === 1) {
+    const only = [...hi][0];
+    const i = WHITE.indexOf(only);
     if (i > 0) {
       const t = document.createElementNS(ns, 'text');
       t.setAttribute('x', i * kw + kw / 2);
       t.setAttribute('y', kh + 14);
       t.setAttribute('text-anchor', 'middle');
       t.setAttribute('class', 'key-label key-label-hi');
-      t.textContent = NOTE_BY_MIDI.get(highlight).name;
+      t.textContent = NOTE_BY_MIDI.get(only).name;
       svg.appendChild(t);
     }
   }

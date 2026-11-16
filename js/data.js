@@ -68,6 +68,8 @@ export const NOTE_BY_MIDI = new Map(NOTES.map((n) => [n.midi, n]));
 
 // Cuántas notas se presentan en la primera sesión.
 export const FIRST_SESSION_NOTES = 3;
+// Cuántas notas o acordes nuevos puede traer una sesión.
+export const NEW_PER_SESSION = 2;
 
 // Días hasta el próximo repaso según el nivel de dominio (0 a 5).
 export const INTERVALS = [0, 1, 2, 4, 7, 14];
@@ -75,58 +77,263 @@ export const MAX_BOX = 5;
 
 // Una respuesta cuenta como fluida si llega antes de este tiempo.
 export const FLUENT_MS = 4000;
+export const FLUENT_CHORD_MS = 12000;
+
+// ---------- Acordes ----------
+
+const LETTERS = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
+const LETTER_PC = [0, 2, 4, 5, 7, 9, 11];
+const LATIN = ['Do', 'Re', 'Mi', 'Fa', 'Sol', 'La', 'Si'];
+const ACC_SHIFT = { '': 0, '#': 1, b: -1 };
+const ACC_WORD = { '': '', '#': ' sostenido', b: ' bemol' };
+
+export const QUALITIES = {
+  '': { intervals: [0, 4, 7], word: 'mayor', formula: '4 + 3 semitonos' },
+  m: { intervals: [0, 3, 7], word: 'menor', formula: '3 + 4 semitonos' },
+  7: { intervals: [0, 4, 7, 10], word: 'séptima', formula: 'mayor (4 + 3) más 3 semitonos' },
+  maj7: { intervals: [0, 4, 7, 11], word: 'séptima mayor', formula: 'mayor (4 + 3) más 4 semitonos' },
+  m7: { intervals: [0, 3, 7, 10], word: 'menor séptima', formula: 'menor (3 + 4) más 3 semitonos' },
+};
+
+// Nombre de cualquier tecla por su clase de nota (0 = Do).
+export const PC_NAMES = ['Do', 'Do♯', 'Re', 'Re♯', 'Mi', 'Fa', 'Fa♯', 'Sol', 'Sol♯', 'La', 'La♯', 'Si'];
+
+function accSign(a) {
+  return a.replace(/#/g, '♯').replace(/b/g, '♭');
+}
+
+// Construye un acorde a partir de su símbolo en cifrado americano (C, F#m, Bb, G7...).
+export function parseChord(symbol) {
+  const m = /^([A-G])([#b]?)(maj7|m7|m|7)?$/.exec(symbol.trim());
+  if (!m) return null;
+  const [, letter, acc, q = ''] = m;
+  const li = LETTERS.indexOf(letter);
+  const rootPc = (LETTER_PC[li] + ACC_SHIFT[acc] + 12) % 12;
+  const quality = QUALITIES[q];
+  const names = [];
+  const pcs = [];
+  quality.intervals.forEach((iv, i) => {
+    const idx = (li + i * 2) % 7;
+    const pc = (rootPc + iv) % 12;
+    const diff = (pc - LETTER_PC[idx] + 12) % 12;
+    const a = diff === 0 ? '' : diff === 1 ? '♯' : diff === 11 ? '♭' : diff === 2 ? '♯♯' : '♭♭';
+    names.push(LATIN[idx] + a);
+    pcs.push(pc);
+  });
+  // Posición fundamental empezando en la octava del Do central.
+  const rootMidi = 60 + rootPc;
+  const midis = quality.intervals.map((iv) => rootMidi + iv);
+  return {
+    id: symbol,
+    quality: q,
+    rootPc,
+    pcs,
+    midis,
+    names,
+    letters: letter + accSign(acc) + q,
+    latin: LATIN[li] + accSign(acc) + q,
+    full: `${LATIN[li]}${ACC_WORD[acc]} ${quality.word}`,
+    formula: quality.formula,
+  };
+}
+
+// Orden en que aparecen los acordes. Los del nivel 1 son los que ya tocas.
+export const CHORD_LEVELS = [
+  { title: 'Acordes básicos', ids: ['C', 'F', 'G', 'Am', 'Dm', 'Em'] },
+  { title: 'Acordes con teclas negras', ids: ['D', 'A', 'E', 'F#m'] },
+  { title: 'Más acordes con teclas negras', ids: ['Bm', 'Gm', 'Cm', 'Bb', 'Eb'] },
+  { title: 'Séptimas', ids: ['G7', 'C7', 'D7', 'A7', 'E7'] },
+  { title: 'Menor séptima y séptima mayor', ids: ['Am7', 'Dm7', 'Em7', 'Cmaj7', 'Fmaj7'] },
+];
+
+export const CHORDS = CHORD_LEVELS.flatMap((lv, i) => lv.ids.map((id) => ({ ...parseChord(id), level: i + 1 })));
+export const CHORD_BY_ID = new Map(CHORDS.map((c) => [c.id, c]));
+export const KNOWN_CHORDS = CHORD_LEVELS[0].ids;
+
+// Cómo mostrar un acorde: con letras, con nombres o de las dos formas.
+export function chordText(chord, notation) {
+  if (notation === 'letters') return chord.letters;
+  if (notation === 'names') return chord.latin;
+  return `${chord.letters} · ${chord.latin}`;
+}
 
 // ---------- Plan de aprendizaje ----------
 
 export const SESSION_PARTS = [
-  { title: 'Teoría', time: '2 a 3 min', text: 'Una lección corta con un ejemplo y una pregunta para comprobar que quedó clara.' },
-  { title: 'Repaso', time: '2 min', text: 'Las notas que ya conoces. Las que más te cuestan aparecen más seguido.' },
-  { title: 'Nota nueva', time: '3 min', text: 'Una sola nota por sesión, y solo cuando las anteriores están firmes.' },
-  { title: 'Frases', time: '2 a 3 min', text: 'Grupos de cuatro notas para leer de corrido, como en una partitura real.' },
+  { title: 'Teoría', time: '2 min', text: 'Una lección corta, alternando acordes y pentagrama, con una pregunta para comprobar que quedó clara.' },
+  { title: 'Acordes', time: '4 min', text: 'Lees un símbolo (Dm, Sol7) y armas el acorde, o ves las teclas y dices qué acorde es.' },
+  { title: 'Pentagrama', time: '4 min', text: 'Lees notas y frases en el pentagrama y las tocas en tu teclado.' },
 ];
 
-export const STAGES = [
+export const TRACKS = [
   {
-    id: 1, ready: true,
-    title: 'Las notas en clave de sol',
-    goal: 'Ver una nota en el pentagrama y tocarla sin pensar, con la mano derecha.',
-    topics: ['El pentagrama y la clave de sol', 'Las 12 notas, del Do central al Sol agudo', 'Pasos, saltos y octavas', 'Cómo se escriben los acordes que ya tocas'],
+    id: 'chords',
+    title: 'Acordes y cifrado',
+    goal: 'Leer cualquier símbolo de acorde, con letras o con nombres, y armarlo sin memorizarlo.',
+    units: [
+      { title: 'Leer el cifrado', ready: true, topics: ['Letras y nombres: C es Do, Am es Lam', 'Mayor y menor', 'Tus acordes básicos: C, F, G, Am, Dm, Em'] },
+      { title: 'Armar acordes', ready: true, topics: ['Semitonos', 'Fórmula del mayor: 4 + 3', 'Fórmula del menor: 3 + 4'] },
+      { title: 'Acordes con teclas negras', ready: true, topics: ['Sostenidos y bemoles: F#m, Bb', 'D, A, E, F#m', 'Bm, Gm, Cm, Bb, Eb'] },
+      { title: 'Séptimas', ready: true, topics: ['G7, C7, D7, A7, E7', 'Am7, Dm7, Em7', 'Cmaj7, Fmaj7'] },
+      { title: 'Progresiones y canciones en cifrado', ready: true, topics: ['Progresiones típicas con pulso', 'Tus propias canciones: cargas los acordes y tocas'] },
+      { title: 'Inversiones y cambios rápidos', ready: false, topics: ['Ejercicios de inversiones', 'Cambiar de acorde moviendo poco la mano'] },
+    ],
   },
   {
-    id: 2, ready: false,
-    title: 'El ritmo',
-    goal: 'Tocar cada nota con su duración, llevando el pulso.',
-    topics: ['Pulso y compás', 'Redondas, blancas y negras', 'Silencios', 'Contar en voz alta mientras tocas'],
-  },
-  {
-    id: 3, ready: false,
-    title: 'La clave de fa',
-    goal: 'Leer las notas de la mano izquierda.',
-    topics: ['La clave de fa', 'Las notas del Do central hacia abajo', 'El pentagrama doble del piano'],
-  },
-  {
-    id: 4, ready: false,
-    title: 'Melodías a primera vista',
-    goal: 'Leer una melodía corta que nunca viste y tocarla sin detenerte.',
-    topics: ['Notas y ritmo a la vez', 'Mirar un compás adelante', 'Melodías nuevas cada día'],
-  },
-  {
-    id: 5, ready: false,
-    title: 'Las dos manos',
-    goal: 'Tocar una canción leyendo: melodía en la derecha y acordes en la izquierda.',
-    topics: ['Manos separadas y luego juntas', 'Acordes escritos en el pentagrama', 'Canciones conocidas como meta'],
-  },
-  {
-    id: 6, ready: false,
-    title: 'Más recursos',
-    goal: 'Ampliar lo que puedes leer y tocar.',
-    topics: ['Corcheas', 'Sostenidos y bemoles', 'Inversiones de acordes', 'Arpegios'],
+    id: 'staff',
+    title: 'Pentagrama y partituras',
+    goal: 'Leer una partitura sencilla y tocarla, con la melodía en la mano derecha y los acordes en la izquierda.',
+    units: [
+      { title: 'Notas en clave de sol', ready: true, topics: ['El pentagrama y la clave de sol', 'Las 12 notas, del Do central al Sol agudo', 'Pasos, saltos y octavas'] },
+      { title: 'Canciones en partitura', ready: true, topics: ['Melodías conocidas de dominio público', 'Acordes escritos sobre la melodía', 'Negras, blancas y corcheas'] },
+      { title: 'El ritmo', ready: false, topics: ['Pulso y compás: 4/4 y 3/4', 'Corcheas y semicorcheas', 'Contar mientras tocas'] },
+      { title: 'La clave de fa', ready: false, topics: ['Las notas de la mano izquierda', 'El pentagrama doble del piano', 'Arpegios y patrón de vals'] },
+      { title: 'Sostenidos y bemoles en el pentagrama', ready: false, topics: ['Alteraciones', 'Armaduras: tres sostenidos, tonalidades menores'] },
+      { title: 'Notas fuera del pentagrama', ready: false, topics: ['Líneas adicionales por arriba', 'Cambios de octava'] },
+      { title: 'Las dos manos leyendo', ready: false, topics: ['Manos separadas y luego juntas', 'Tus piezas meta, por secciones'] },
+    ],
   },
 ];
 
-// Lecciones de teoría de la etapa 1. Una por sesión, en este orden.
+// Las piezas que quieres llegar a leer y tocar, y lo que exige cada una.
+export const GOALS = [
+  {
+    title: 'River Flows in You', by: 'Yiruma',
+    needs: [
+      { text: 'Acordes F#m, D, A y E, su progresión principal', track: 'chords', ready: true },
+      { text: 'Leer las notas en clave de sol', track: 'staff', ready: true },
+      { text: 'Mano izquierda en arpegios, en clave de fa', track: 'staff', ready: false },
+      { text: 'Armadura de tres sostenidos', track: 'staff', ready: false },
+      { text: 'Corcheas y semicorcheas', track: 'staff', ready: false },
+      { text: 'Notas agudas por encima del pentagrama', track: 'staff', ready: false },
+    ],
+  },
+  {
+    title: 'Once Upon a December', by: 'de la película Anastasia',
+    needs: [
+      { text: 'Acordes menores y séptimas', track: 'chords', ready: true },
+      { text: 'Leer las notas en clave de sol', track: 'staff', ready: true },
+      { text: 'Compás de 3/4 y ritmo de vals', track: 'staff', ready: false },
+      { text: 'Mano izquierda con patrón de vals, en clave de fa', track: 'staff', ready: false },
+      { text: 'Tonalidad menor con alteraciones', track: 'staff', ready: false },
+    ],
+  },
+];
+
+// ---------- Teoría del camino de acordes ----------
+// chord: acorde que se muestra en el teclado. key: una tecla suelta.
+
+const CHORD_LESSONS = [
+  {
+    title: 'El cifrado: letras y nombres',
+    body: [
+      'Los acordes se escriben de dos formas. Con nombres: Do, Re, Mi. Con letras, el llamado cifrado americano: C, D, E.',
+      'La equivalencia es fija: C es Do, D es Re, E es Mi, F es Fa, G es Sol, A es La y B es Si.',
+      'Un truco para recordarlo: el abecedario empieza en La (A). Si cuentas A, B, C, llegas a Do en la C.',
+    ],
+    quiz: { q: '¿Qué nota es la letra F?', options: ['Fa', 'Sol', 'Mi'], answer: 0, why: 'C, D, E, F es Do, Re, Mi, Fa.' },
+  },
+  {
+    title: 'Mayor y menor',
+    body: [
+      'Una letra o un nombre solo indica un acorde mayor: C es Do mayor y G es Sol mayor.',
+      'Una m minúscula indica menor: Am es La menor y Dm es Re menor. Con nombres se escribe igual: Lam, Rem.',
+      'El mayor suena abierto y luminoso; el menor, más oscuro. Toca C y después Am para comparar.',
+    ],
+    chord: 'Am',
+    quiz: { q: '¿Qué acorde es Em?', options: ['Mi mayor', 'Mi menor', 'Re menor'], answer: 1, why: 'E es Mi, y la m minúscula indica menor.' },
+  },
+  {
+    title: 'Los semitonos',
+    body: [
+      'Un semitono es la distancia entre una tecla y la que le sigue inmediatamente, sea blanca o negra.',
+      'De Do a Re hay dos semitonos, porque en el medio hay una tecla negra. De Mi a Fa hay uno solo, porque no hay negra entre ellas. Lo mismo pasa entre Si y Do.',
+      'Contar semitonos es la herramienta para armar cualquier acorde.',
+    ],
+    quiz: { q: '¿Cuántos semitonos hay de Mi a Fa?', options: ['Uno', 'Dos', 'Tres'], answer: 0, why: 'Entre Mi y Fa no hay tecla negra: son teclas vecinas.' },
+  },
+  {
+    title: 'Cómo se arma un acorde mayor',
+    body: [
+      'Un acorde mayor tiene tres notas: la fundamental, que le da el nombre, la tercera y la quinta.',
+      'La fórmula: desde la fundamental cuenta 4 semitonos para llegar a la tercera, y desde ahí 3 más para la quinta. Es decir, 4 + 3.',
+      'Ejemplo con C: desde Do, cuatro semitonos llegan a Mi, y tres más llegan a Sol. Do, Mi, Sol.',
+    ],
+    chord: 'C',
+    quiz: { q: 'Con la fórmula 4 + 3 desde Fa, ¿qué notas forman F?', options: ['Fa, La, Do', 'Fa, Sol, Do', 'Fa, La, Re'], answer: 0, why: 'Cuatro semitonos desde Fa llegan a La, y tres más llegan a Do.' },
+  },
+  {
+    title: 'Cómo se arma un acorde menor',
+    body: [
+      'El menor invierte la fórmula: primero 3 semitonos y después 4. Es decir, 3 + 4.',
+      'En la práctica solo cambia la nota del medio, que baja un semitono. C es Do, Mi, Sol; Cm es Do, Mi bemol, Sol.',
+      'Por eso de cualquier acorde mayor puedes sacar su menor, y al revés.',
+    ],
+    chord: 'Cm',
+    quiz: { q: '¿Qué nota cambia entre un acorde mayor y su menor?', options: ['La de abajo', 'La del medio', 'La de arriba'], answer: 1, why: 'La tercera, la nota del medio, baja un semitono.' },
+  },
+  {
+    title: 'Sostenidos y bemoles',
+    body: [
+      'Las teclas negras no tienen nombre propio: toman el de una vecina. El sostenido (♯, escrito #) sube un semitono; el bemol (♭, escrito b) baja un semitono.',
+      'La negra entre Fa y Sol puede llamarse Fa sostenido (F#) o Sol bemol (Gb). Es la misma tecla.',
+      'En el cifrado, el símbolo va pegado a la letra, antes de todo lo demás: F#m es Fa sostenido menor y Bb es Si bemol mayor.',
+    ],
+    key: 66,
+    quiz: { q: '¿Cómo se escribe Re sostenido menor?', options: ['Dm#', 'D#m', '#Dm'], answer: 1, why: 'Primero la letra, después el sostenido y al final la m de menor.' },
+  },
+  {
+    title: 'Acordes con teclas negras',
+    body: [
+      'Al aplicar la fórmula aparecen teclas negras en acordes muy comunes. D es Re, Fa sostenido, La. A es La, Do sostenido, Mi. E es Mi, Sol sostenido, Si.',
+      'No hace falta memorizarlos: cuenta 4 + 3 desde la fundamental y la tecla negra aparece sola.',
+    ],
+    chord: 'D',
+    quiz: { q: '¿Qué notas forman A, La mayor?', options: ['La, Do, Mi', 'La, Do sostenido, Mi', 'La, Re, Mi'], answer: 1, why: 'Cuatro semitonos desde La llegan a Do sostenido. La, Do, Mi sería La menor.' },
+  },
+  {
+    title: 'La séptima',
+    body: [
+      'Un 7 después del acorde agrega una cuarta nota: G7 es Sol, Si, Re y Fa.',
+      'Esa nota está 3 semitonos por encima de la quinta. Dicho de otro modo, dos semitonos por debajo de la fundamental siguiente.',
+      'El acorde con séptima suena inestable y pide resolver: G7 lleva naturalmente a C.',
+    ],
+    chord: 'G7',
+    quiz: { q: '¿Qué nota se agrega a C (Do, Mi, Sol) para formar C7?', options: ['Si', 'Si bemol', 'La'], answer: 1, why: 'Tres semitonos por encima de Sol está Si bemol.' },
+  },
+  {
+    title: 'Otras séptimas: maj7 y m7',
+    body: [
+      'Cmaj7 agrega la séptima mayor, que está un semitono por debajo de la fundamental siguiente: Do, Mi, Sol, Si. Suena suave y se usa mucho en baladas.',
+      'Am7 es un acorde menor con séptima: La, Do, Mi, Sol.',
+      'C7 y Cmaj7 no son lo mismo: C7 lleva Si bemol y Cmaj7 lleva Si.',
+    ],
+    chord: 'Cmaj7',
+    quiz: { q: '¿Qué notas forman Am7?', options: ['La, Do, Mi, Sol', 'La, Do sostenido, Mi, Sol', 'La, Do, Mi, Sol sostenido'], answer: 0, why: 'La menor (La, Do, Mi) más la nota que está tres semitonos sobre Mi: Sol.' },
+  },
+  {
+    title: 'Inversiones',
+    body: [
+      'Las notas de un acorde se pueden ordenar de otra forma sin que cambie el acorde. C puede tocarse Do-Mi-Sol, Mi-Sol-Do o Sol-Do-Mi.',
+      'Sirven para cambiar de acorde moviendo poco la mano: después de C (Do-Mi-Sol), es más cómodo tocar F como Do-Fa-La que saltar hasta Fa-La-Do.',
+      'En la práctica de la app puedes tocar las notas en cualquier orden y altura: lo que cuenta es que sean las correctas.',
+    ],
+    quiz: { q: 'Mi-Sol-Do, ¿qué acorde es?', options: ['C', 'Em', 'G'], answer: 0, why: 'Son las notas de Do mayor en otro orden.' },
+  },
+  {
+    title: 'Progresiones',
+    body: [
+      'Las canciones repiten secuencias de acordes llamadas progresiones. Muchísimas canciones pop usan los mismos cuatro: C, G, Am y F.',
+      'En la sección Canciones puedes practicar progresiones con un pulso que marca los cambios, y cargar los acordes de tus propias canciones.',
+      'Al principio toca un acorde por compás y cambia justo en el primer pulso, aunque sea despacio.',
+    ],
+    quiz: { q: '¿Qué es una progresión?', options: ['Una secuencia de acordes que se repite', 'Un acorde de cuatro notas', 'Una forma de tocar más fuerte'], answer: 0, why: 'Es el orden en que se suceden los acordes de una canción.' },
+  },
+];
+
+// Lecciones de teoría del camino de pentagrama, en este orden.
 // staff: notas del ejemplo ({ key | keys, label, duration }).
-export const LESSONS = [
+const STAFF_LESSONS = [
   {
     title: 'El pentagrama',
     body: [
@@ -264,20 +471,6 @@ export const LESSONS = [
     },
   },
   {
-    title: 'Las letras de los acordes',
-    body: [
-      'Los acordes suelen escribirse con letras: C, F, G, Am. Son las mismas notas con otro nombre.',
-      'C es Do, D es Re, E es Mi, F es Fa, G es Sol, A es La y B es Si.',
-      'Una letra sola indica un acorde mayor: C es Do mayor. Con una m minúscula es menor: Am es La menor.',
-    ],
-    quiz: {
-      q: '¿Qué acorde es G?',
-      options: ['Sol mayor', 'Mi mayor', 'La mayor'],
-      answer: 0,
-      why: 'La letra G corresponde a Sol.',
-    },
-  },
-  {
     title: 'Las notas guía',
     body: [
       'Quien lee con soltura no cuenta líneas en cada nota. Reconoce al instante unas pocas notas guía y mide desde ahí.',
@@ -297,7 +490,7 @@ export const LESSONS = [
     body: [
       'Hasta ahora viste dónde va cada nota, es decir, su altura. La otra mitad de la lectura es cuánto dura cada una.',
       'La forma de la nota indica su duración: la redonda (hueca, sin palo) dura cuatro pulsos; la blanca (hueca, con palo), dos; la negra (rellena, con palo), uno.',
-      'En las frases de la práctica ya aparecen negras. En la etapa siguiente vas a aprender a contar y a tocar con ritmo.',
+      'En las frases de la práctica ya aparecen negras. En la sección Canciones ya puedes leer melodías con negras, blancas y corcheas.',
     ],
     staff: [{ key: 'b/4', duration: 'w', label: 'redonda' }, { key: 'b/4', duration: 'h', label: 'blanca' }, { key: 'b/4', duration: 'q', label: 'negra' }],
     quiz: {
@@ -306,5 +499,64 @@ export const LESSONS = [
       answer: 1,
       why: 'La redonda dura cuatro, la blanca dos y la negra uno.',
     },
+  },
+];
+
+export const LESSONS = { chords: CHORD_LESSONS, staff: STAFF_LESSONS };
+export const TOTAL_LESSONS = CHORD_LESSONS.length + STAFF_LESSONS.length;
+
+// ---------- Canciones ----------
+
+// Progresiones para tocar con pulso. Cada acorde dura un compás de 4 tiempos.
+export const PROGRESSIONS = [
+  { id: 'p1', title: 'Los cuatro acordes del pop', chords: ['C', 'G', 'Am', 'F'], note: 'La secuencia más usada en el pop y el rock.' },
+  { id: 'p2', title: 'La balada', chords: ['Am', 'F', 'C', 'G'], note: 'Los mismos cuatro acordes empezando por el menor: suena más melancólica.' },
+  { id: 'p3', title: 'Los años 50', chords: ['C', 'Am', 'F', 'G'], note: 'Típica de las baladas clásicas.' },
+  { id: 'p4', title: 'Tres acordes', chords: ['C', 'F', 'G', 'C'], note: 'Con solo tres acordes mayores se tocan cientos de canciones.' },
+  { id: 'p5', title: 'Menor con séptima', chords: ['Dm', 'G7', 'C', 'Am'], note: 'G7 pide resolver en C: escúchalo.' },
+  { id: 'p6', title: 'La progresión de River Flows in You', chords: ['F#m', 'D', 'A', 'E'], note: 'Los cuatro acordes sobre los que está construida tu primera pieza meta.' },
+  { id: 'p8', title: 'Vals en menor', chords: ['Am', 'Dm', 'E7', 'Am'], beats: 3, note: 'En 3/4: un bajo y dos acordes por compás, como en un vals.' },
+  { id: 'p9', title: 'Con teclas negras', chords: ['D', 'A', 'Bm', 'G'], note: 'Los cuatro acordes del pop, un tono más arriba.' },
+  { id: 'p7', title: 'Ocho compases', chords: ['C', 'G', 'Am', 'Em', 'F', 'C', 'F', 'G'], note: 'Una secuencia larga, muy usada en música clásica y en baladas.' },
+];
+
+// Melodías de dominio público. n: nota (letra + octava), d: duración
+// (w redonda, h blanca, hd blanca con puntillo, q negra, qd negra con puntillo, 8 corchea).
+// c: acorde que empieza en esa nota. '|' separa compases.
+function melody(text) {
+  const bars = text.trim().split('|').map((bar) => bar.trim().split(/\s+/).filter(Boolean).map((tok) => {
+    const [n, d, c] = tok.split(':');
+    const pc = { c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11 }[n[0]];
+    const octave = Number(n[1]);
+    return { key: `${n[0]}/${octave}`, midi: 12 * (octave + 1) + pc, dur: d, chord: c || null };
+  }));
+  return bars;
+}
+
+export const SONGS = [
+  {
+    id: 's1', title: 'Claro de luna (Au clair de la lune)', by: 'Tradicional francesa', time: '4/4',
+    bars: melody('c4:q:C c4:q c4:q d4:q | e4:h d4:h:G | c4:q:C e4:q d4:q:G d4:q | c4:w:C'),
+  },
+  {
+    id: 's2', title: 'Oda a la alegría', by: 'Ludwig van Beethoven', time: '4/4',
+    bars: melody(`e4:q:C e4:q f4:q g4:q | g4:q:G f4:q e4:q d4:q | c4:q:C c4:q d4:q e4:q | e4:qd:G d4:8 d4:h |
+      e4:q:C e4:q f4:q g4:q | g4:q:G f4:q e4:q d4:q | c4:q:C c4:q d4:q e4:q | d4:qd:G c4:8 c4:h:C`),
+  },
+  {
+    id: 's3', title: 'Estrellita, ¿dónde estás?', by: 'Tradicional', time: '4/4',
+    bars: melody(`c4:q:C c4:q g4:q g4:q | a4:q:F a4:q g4:h:C | f4:q:F f4:q e4:q:C e4:q | d4:q:G d4:q c4:h:C |
+      g4:q:C g4:q f4:q:F f4:q | e4:q:C e4:q d4:h:G | g4:q:C g4:q f4:q:F f4:q | e4:q:C e4:q d4:h:G |
+      c4:q:C c4:q g4:q g4:q | a4:q:F a4:q g4:h:C | f4:q:F f4:q e4:q:C e4:q | d4:q:G d4:q c4:h:C`),
+  },
+  {
+    id: 's4', title: 'Jingle Bells (estribillo)', by: 'James Lord Pierpont', time: '4/4',
+    bars: melody(`e4:q:C e4:q e4:h | e4:q e4:q e4:h | e4:q g4:q c4:qd d4:8 | e4:w |
+      f4:q:F f4:q f4:qd f4:8 | f4:q:C e4:q e4:q e4:8 e4:8 | e4:q:G d4:q d4:q e4:q | d4:h g4:h`),
+  },
+  {
+    id: 's5', title: 'Cumpleaños feliz', by: 'Tradicional', time: '3/4',
+    bars: melody(`g4:8 g4:8 | a4:q:C g4:q c5:q | b4:h:G g4:8 g4:8 | a4:q g4:q d5:q | c5:h:C g4:8 g4:8 |
+      g5:q e5:q c5:q | b4:q:F a4:q f5:8 f5:8 | e5:q:C c5:q d5:q:G | c5:hd:C`),
   },
 ];
