@@ -1,5 +1,5 @@
 // Entrada de micrófono: escucha el teclado y avisa cada vez que suena una nota.
-import { PitchDetector, NoteTracker, rms } from './pitch.js';
+import { PitchDetector, NoteTracker, NoiseFloor, rms } from './pitch.js';
 
 export class MicListener {
   constructor() {
@@ -40,10 +40,20 @@ export class MicListener {
     this.analyser = this.ctx.createAnalyser();
     this.analyser.fftSize = 4096;
     this.analyser.smoothingTimeConstant = 0;
-    source.connect(this.analyser);
+    // Filtros: quitan el zumbido grave y el siseo agudo que confunden la detección.
+    const highpass = this.ctx.createBiquadFilter();
+    highpass.type = 'highpass';
+    highpass.frequency.value = 180;
+    const lowpass = this.ctx.createBiquadFilter();
+    lowpass.type = 'lowpass';
+    lowpass.frequency.value = 2600;
+    source.connect(highpass);
+    highpass.connect(lowpass);
+    lowpass.connect(this.analyser);
     this.buffer = new Float32Array(this.analyser.fftSize);
     this.detector = new PitchDetector(this.ctx.sampleRate);
     this.tracker = new NoteTracker();
+    this.noise = new NoiseFloor();
     this.timer = setInterval(() => this.tick(), 33);
   }
 
@@ -51,9 +61,10 @@ export class MicListener {
     if (!this.analyser) return;
     this.analyser.getFloatTimeDomainData(this.buffer);
     const level = rms(this.buffer);
+    this.tracker.gate = this.noise.update(level);
     const result = level >= this.tracker.gate ? this.detector.detect(this.buffer) : null;
     const midi = this.tracker.push(result, level, performance.now());
-    if (this.onLevel) this.onLevel({ level, midi: this.tracker.current });
+    if (this.onLevel) this.onLevel({ level, gate: this.tracker.gate, midi: this.tracker.current });
     if (midi !== null && this.onNote) this.onNote(midi);
   }
 

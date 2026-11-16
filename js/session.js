@@ -1,6 +1,6 @@
 // Arma la sesión del día: repaso, nota nueva y frases.
-import { NOTES, FIRST_SESSION_NOTES } from './data.js';
-import { unlockedNotes, nextNewNote, noteWeight, noteStat, unlock } from './store.js';
+import { NOTES, LESSONS, FIRST_SESSION_NOTES } from './data.js';
+import { unlockedNotes, nextNewNote, noteWeight, noteStat, unlock, lessonsDone } from './store.js';
 
 function weightedPick(midis, avoid) {
   const pool = midis.filter((m) => !avoid.includes(m));
@@ -40,9 +40,27 @@ function phrase(midis, length = 4) {
 }
 
 // Devuelve la lista de pasos de la sesión.
+// Parte teórica: una pregunta de repaso de una lección anterior y la lección nueva.
+function theorySteps() {
+  const out = [];
+  const done = lessonsDone();
+  if (done > 0) {
+    const pick = Math.floor(Math.random() * done);
+    out.push({ type: 'quiz', lesson: pick });
+    if (done >= LESSONS.length && done > 1) {
+      let other = Math.floor(Math.random() * (done - 1));
+      if (other >= pick) other += 1;
+      out.push({ type: 'quiz', lesson: other });
+    }
+  }
+  if (done < LESSONS.length) out.push({ type: 'theory', lesson: done });
+  return out;
+}
+
 export function buildSession({ minimal = false } = {}) {
   const steps = [];
   let known = unlockedNotes().map((n) => n.midi);
+  if (!minimal) steps.push(...theorySteps());
 
   // Primera sesión: presenta las tres notas del acorde de Do, una por una.
   if (known.length === 0) {
@@ -56,8 +74,8 @@ export function buildSession({ minimal = false } = {}) {
       if (soFar.length > 1) steps.push(...cards(soFar, minimal ? 2 : 4, midi));
     }
     if (!minimal) {
-      steps.push(...cards(soFar, 6));
-      steps.push(phrase(soFar), phrase(soFar));
+      steps.push(...cards(soFar, 8));
+      steps.push(phrase(soFar), phrase(soFar), phrase(soFar));
     }
     return steps;
   }
@@ -71,7 +89,7 @@ export function buildSession({ minimal = false } = {}) {
   }
 
   // Repaso de lo que ya conoces.
-  steps.push(...cards(known, minimal ? 6 : 8));
+  steps.push(...cards(known, minimal ? 6 : 12));
 
   // Nota nueva, si lo anterior ya está firme (no en la sesión mínima).
   const fresh = minimal ? null : nextNewNote();
@@ -80,14 +98,14 @@ export function buildSession({ minimal = false } = {}) {
     known = [...known, fresh.midi];
     steps.push({ type: 'intro', midi: fresh.midi });
     steps.push({ type: 'card', midi: fresh.midi, guided: true });
-    steps.push(...cards(known, 8, fresh.midi));
+    steps.push(...cards(known, 10, fresh.midi));
   } else if (!minimal) {
-    steps.push(...cards(known, 8));
+    steps.push(...cards(known, 10));
   }
 
   // Aplicación: frases cortas para leer de corrido.
   if (known.length >= 2) {
-    const n = minimal ? 1 : 3;
+    const n = minimal ? 1 : 4;
     for (let i = 0; i < n; i++) steps.push(phrase(known));
   }
   return steps;

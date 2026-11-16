@@ -3,10 +3,10 @@ import { NOTE_BY_MIDI } from './data.js';
 
 const VF = window.Vex.Flow;
 
-const INK = '#1c1917';
-const ACCENT = '#b4541a';
-const DONE = '#2f7d4f';
-const FAINT = '#8a8178';
+const INK = '#04193a';
+const ACCENT = '#00a88d';
+const DONE = '#a9b3c2';
+const FAINT = '#04193a';
 
 // Dibuja una o varias notas en clave de sol.
 // states: por nota, 'current' | 'done' | 'todo'
@@ -49,6 +49,52 @@ export function drawStaff(container, midis, states = []) {
   svg.style.height = 'auto';
   svg.setAttribute('role', 'img');
   svg.setAttribute('aria-label', many ? 'Frase en el pentagrama' : 'Nota en el pentagrama');
+}
+
+// Ejemplo para las lecciones: notas o acordes con una etiqueta debajo.
+// items: [{ key | keys, label, duration }]
+export function drawExample(container, items) {
+  container.innerHTML = '';
+  const width = Math.max(240, 110 + items.length * 62);
+  const height = 172;
+  const renderer = new VF.Renderer(container, VF.Renderer.Backends.SVG);
+  renderer.resize(width, height);
+  const ctx = renderer.getContext();
+  ctx.setFillStyle(INK);
+  ctx.setStrokeStyle(INK);
+
+  const stave = new VF.Stave(8, 18, width - 16);
+  stave.addClef('treble');
+  stave.setContext(ctx).draw();
+
+  const notes = items.map((item) => {
+    const note = new VF.StaveNote({ keys: item.keys || [item.key], duration: item.duration || 'w', auto_stem: true });
+    if (item.label) {
+      const ann = new VF.Annotation(item.label);
+      ann.setFont('Arial', 10, 'bold');
+      ann.setVerticalJustification(VF.Annotation.VerticalJustify.BOTTOM);
+      note.addModifier(ann, 0);
+      note.setStyle({ fillStyle: INK, strokeStyle: INK });
+    }
+    return note;
+  });
+
+  const voice = new VF.Voice({ num_beats: 4, beat_value: 4 }).setStrict(false);
+  voice.addTickables(notes);
+  new VF.Formatter().joinVoices([voice]).format([voice], width - 110);
+  voice.draw(ctx, stave);
+
+  const svg = container.querySelector('svg');
+  svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+  svg.removeAttribute('width');
+  svg.removeAttribute('height');
+  svg.style.width = '100%';
+  svg.style.maxWidth = `${width * 1.5}px`;
+  svg.style.height = 'auto';
+  svg.style.display = 'block';
+  svg.style.margin = '0 auto';
+  svg.setAttribute('role', 'img');
+  svg.setAttribute('aria-label', 'Ejemplo en el pentagrama: ' + items.map((i) => i.label).filter(Boolean).join(', '));
 }
 
 // Teclado de Do central a Sol agudo.

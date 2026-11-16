@@ -1,7 +1,7 @@
-import { NOTES, NOTE_BY_MIDI, MAX_BOX } from './data.js';
+import { NOTES, NOTE_BY_MIDI, MAX_BOX, LESSONS, STAGES, SESSION_PARTS } from './data.js';
 import * as store from './store.js';
 import { buildSession } from './session.js';
-import { drawStaff, drawKeyboard } from './staff.js';
+import { drawStaff, drawKeyboard, drawExample } from './staff.js';
 import { MicListener, keepAwake } from './audio.js';
 import { midiName } from './pitch.js';
 
@@ -41,6 +41,14 @@ function heardLabel(midi) {
   return name;
 }
 
+// Barra de volumen en escala logarítmica, para que se note también el sonido bajo.
+function meterPct(level) {
+  if (!level || level <= 0) return 0;
+  return Math.max(0, Math.min(100, Math.round(((Math.log10(level) + 3.3) / 2.3) * 100)));
+}
+
+const BRAND = '<span class="brand"><img src="icons/logo-mark.png" alt="" width="40" height="40"><h1>Ten<span class="p">P</span>iano</h1></span>';
+
 function stopMic() {
   mic.onNote = null;
   mic.onLevel = null;
@@ -57,6 +65,7 @@ function renderHome() {
   const st = store.streakStatus();
   const week = store.weekSummary();
   const isNew = store.unlockedNotes().length === 0;
+  const { firm, lessons, pct: stagePct } = stageProgress();
 
   let status;
   if (st.doneToday) status = '<span class="badge badge-good">Hoy ya practicaste</span>';
@@ -74,7 +83,7 @@ function renderHome() {
 
   show(`
     <header class="row-between">
-      <h1>TenPiano</h1>
+      ${BRAND}
       <button class="icon-btn" id="settings" aria-label="Ajustes">⚙</button>
     </header>
 
@@ -88,9 +97,16 @@ function renderHome() {
     </section>
 
     <section class="stack">
-      <button class="btn btn-primary" id="start">${isNew ? 'Empezar la primera sesión' : st.doneToday ? 'Practicar otra vez' : 'Empezar la sesión de hoy'}<small>Unos 5 minutos</small></button>
-      ${isNew ? '' : '<button class="btn" id="start-min">Sesión mínima<small>2 minutos, para los días difíciles</small></button>'}
-      <button class="btn" id="mictest">Probar el micrófono<small>Comprueba que la app oye tu teclado</small></button>
+      <button class="btn btn-primary" id="start">${isNew ? 'Empezar la primera sesión' : st.doneToday ? 'Practicar otra vez' : 'Empezar la sesión de hoy'}<small>Unos 10 minutos: teoría y práctica</small></button>
+      ${isNew ? '' : '<button class="btn" id="start-min">Sesión mínima<small>2 minutos de práctica, para los días difíciles</small></button>'}
+    </section>
+
+    <section class="card stack">
+      <p class="eyebrow">Tu camino · Etapa 1 de ${STAGES.length}</p>
+      <h2>${STAGES[0].title}</h2>
+      <div class="bar" role="progressbar" aria-label="Avance de la etapa" aria-valuenow="${stagePct}" aria-valuemin="0" aria-valuemax="100"><div style="width:${stagePct}%"></div></div>
+      <p class="small muted">${firm} de ${NOTES.length} notas firmes · ${lessons} de ${LESSONS.length} lecciones de teoría</p>
+      <button class="btn" id="path">Ver mi plan de aprendizaje<small>Qué vas a aprender y en qué orden</small></button>
     </section>
 
     <section class="card stack">
@@ -107,6 +123,7 @@ function renderHome() {
         <div><div class="stat-num">${week.accuracy === null ? '–' : week.accuracy + '%'}</div><div class="small muted">al primer intento</div></div>
       </div>
     </section>
+    <button class="btn" id="mictest">Probar el micrófono<small>Comprueba que la app oye tu teclado</small></button>
     ${store.isMemoryOnly() ? '<p class="small muted center">Este navegador no permite guardar el progreso. Lo que practiques se perderá al cerrar.</p>' : ''}
   `);
 
@@ -114,6 +131,15 @@ function renderHome() {
   if ($('#start-min')) $('#start-min').onclick = () => startSession(true);
   $('#mictest').onclick = renderMicTest;
   $('#settings').onclick = renderSettings;
+  $('#path').onclick = renderPath;
+}
+
+// Avance de la etapa 1: notas firmes (dominio 3 o más) y lecciones completadas.
+function stageProgress() {
+  const firm = NOTES.filter((n) => (store.noteStat(n.midi)?.box || 0) >= 3).length;
+  const lessons = store.lessonsDone();
+  const pct = Math.round(((firm + lessons) / (NOTES.length + LESSONS.length)) * 100);
+  return { firm, lessons, pct };
 }
 
 // ---------- sesión ----------
@@ -148,6 +174,9 @@ async function startSession(minimal) {
     startedAt: Date.now(),
     answered: 0,
     firstTry: 0,
+    lesson: null,
+    quizzes: 0,
+    quizRight: 0,
     missed: new Map(),
   };
   renderStep();
@@ -173,6 +202,8 @@ function renderStep() {
   if (session.index >= session.steps.length) return finishSession();
   const step = session.steps[session.index];
   if (step.type === 'intro') return renderIntro(step);
+  if (step.type === 'theory') return renderLesson(step.lesson, { inSession: true });
+  if (step.type === 'quiz') return renderQuiz(step.lesson, { review: true });
   return renderPlay(step);
 }
 
@@ -199,6 +230,88 @@ function renderIntro(step) {
   drawKeyboard($('#keys'), { highlight: step.midi, labels: true });
   $('#ok').onclick = nextStep;
 }
+
+// ---------- teoría ----------
+
+function lessonHtml(index) {
+  const l = LESSONS[index];
+  return `
+    <section class="stack lesson">
+      <p class="eyebrow">Teoría · Lección ${index + 1} de ${LESSONS.length}</p>
+      <h2>${l.title}</h2>
+      ${l.staff ? '<div class="paper" id="example"></div>' : ''}
+      ${l.body.map((p) => `<p>${p}</p>`).join('')}
+      ${l.keyboard ? '<div class="keys-box" id="keys"></div>' : ''}
+    </section>`;
+}
+
+function paintLesson(index) {
+  const l = LESSONS[index];
+  if (l.staff) drawExample($('#example'), l.staff);
+  if (l.keyboard) drawKeyboard($('#keys'), { highlight: l.keyboard, labels: true });
+}
+
+// Lección dentro de la sesión (seguida de su pregunta) o para releer desde "Tu camino".
+function renderLesson(index, { inSession }) {
+  const body = `${lessonHtml(index)}
+    <div class="spacer"></div>
+    <button class="btn btn-primary" id="ok">${inSession ? 'Continuar' : 'Volver'}</button>`;
+  if (inSession) {
+    sessionShell(body);
+    $('#ok').onclick = () => renderQuiz(index, { review: false });
+  } else {
+    show(`<header class="row"><button class="icon-btn" id="back" aria-label="Volver">←</button><h2>Teoría</h2></header>${body}`);
+    $('#back').onclick = renderPath;
+    $('#ok').onclick = renderPath;
+  }
+  paintLesson(index);
+}
+
+function renderQuiz(index, { review }) {
+  const l = LESSONS[index];
+  const order = l.quiz.options.map((_, i) => i).sort(() => Math.random() - 0.5);
+  sessionShell(`
+    <section class="stack">
+      <p class="eyebrow">${review ? 'Repaso de teoría' : 'Comprueba'} · ${l.title}</p>
+      <p class="prompt" style="text-align:left">${l.quiz.q}</p>
+      <div class="options">
+        ${order.map((i) => `<button class="btn option" data-i="${i}">${l.quiz.options[i]}</button>`).join('')}
+      </div>
+      <p class="feedback" id="feedback" role="status" style="text-align:left"></p>
+    </section>
+    <div class="spacer"></div>
+    <button class="btn btn-primary" id="ok" hidden>Seguir</button>
+  `);
+  let tries = 0;
+  app.querySelectorAll('.option').forEach((b) => {
+    b.onclick = () => {
+      const fb = $('#feedback');
+      tries += 1;
+      if (Number(b.dataset.i) === l.quiz.answer) {
+        b.classList.add('option-right');
+        app.querySelectorAll('.option').forEach((o) => (o.disabled = true));
+        fb.textContent = `Correcto. ${l.quiz.why}`;
+        fb.className = 'feedback feedback-good';
+        session.quizzes += 1;
+        if (tries === 1) session.quizRight += 1;
+        if (!review) {
+          store.completeLesson(index);
+          session.lesson = index;
+        }
+        $('#ok').hidden = false;
+        $('#ok').focus();
+      } else {
+        b.classList.add('option-wrong');
+        b.disabled = true;
+        fb.textContent = 'No es esa. Piénsalo otra vez.';
+        fb.className = 'feedback feedback-bad';
+      }
+    };
+  });
+  $('#ok').onclick = nextStep;
+}
+
+// ---------- práctica ----------
 
 function listenRow() {
   if (session.input !== 'mic') return '';
@@ -335,7 +448,7 @@ function renderPlay(step) {
     const meter = $('#meter');
     mic.onNote = (midi) => answer(midi);
     mic.onLevel = ({ level }) => {
-      if (meter && meter.isConnected) meter.style.width = Math.min(100, Math.round(level * 500)) + '%';
+      if (meter && meter.isConnected) meter.style.width = meterPct(level) + '%';
     };
   }
 }
@@ -354,11 +467,15 @@ function finishSession() {
   const hard = [...session.missed.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([m]) => NOTE_BY_MIDI.get(m).label);
   const next = store.nextNewNote();
   const weak = store.unlockedNotes().filter((n) => store.noteStat(n.midi).box < 2).map((n) => n.label);
-  const tomorrow = next
-    ? `Mañana conoces una nota nueva: ${next.label}.`
-    : weak.length
-      ? `Mañana toca afirmar ${weak.slice(0, 3).join(', ')}. Cuando estén firmes aparece la siguiente nota.`
-      : 'Mañana seguimos con repaso y frases.';
+  const nextLesson = LESSONS[store.lessonsDone()];
+  const tomorrow = [
+    nextLesson ? `Teoría de la próxima sesión: ${nextLesson.title}.` : '',
+    next
+      ? `Nota nueva: ${next.label}.`
+      : weak.length
+        ? `Toca afirmar ${weak.slice(0, 3).join(', ')}; cuando estén firmes aparece la siguiente nota.`
+        : 'Seguimos con repaso y frases.',
+  ].filter(Boolean).join(' ');
   const mins = Math.floor(seconds / 60);
   const secs = seconds % 60;
 
@@ -378,6 +495,7 @@ function finishSession() {
         <div><div class="stat-num">${acc}%</div><div class="small muted">al primer intento</div></div>
         <div><div class="stat-num">${mins}:${String(secs).padStart(2, '0')}</div><div class="small muted">tiempo</div></div>
       </div>
+      ${session.lesson !== null ? `<p>Teoría de hoy: ${LESSONS[session.lesson].title}.</p>` : ''}
       ${hard.length ? `<p>Las que más costaron hoy: ${hard.join(', ')}. Van a volver más seguido.</p>` : '<p>Todas al primer intento.</p>'}
       <p class="muted">${tomorrow}</p>
     </section>
@@ -385,6 +503,87 @@ function finishSession() {
     <button class="btn btn-primary" id="home">Listo</button>
   `);
   $('#home').onclick = renderHome;
+}
+
+// ---------- tu camino ----------
+
+function renderPath() {
+  stopMic();
+  const { firm, lessons } = stageProgress();
+  const unlocked = store.unlockedNotes().length;
+
+  const parts = SESSION_PARTS.map((p) => `
+    <div class="part"><span class="part-time">${p.time}</span><span><strong>${p.title}.</strong> ${p.text}</span></div>`).join('');
+
+  const stages = STAGES.map((st) => `
+    <div class="stage ${st.id === 1 ? 'stage-now' : ''}">
+      <div class="stage-num" aria-hidden="true">${st.id}</div>
+      <div class="grow">
+        <p><strong>${st.title}</strong> ${st.id === 1 ? '<span class="badge badge-warn">Estás aquí</span>' : '<span class="badge">Próximamente</span>'}</p>
+        <p class="small muted">${st.goal}</p>
+        <ul class="small">${st.topics.map((t) => `<li>${t}</li>`).join('')}</ul>
+      </div>
+    </div>`).join('');
+
+  const lessonRows = LESSONS.map((l, i) => `
+    <li><button class="lesson-row" data-lesson="${i}">
+      <span class="lesson-mark" aria-hidden="true">${i < lessons ? '✓' : i + 1}</span>
+      <span class="grow">${l.title}${i < lessons ? '<span class="small muted"> · vista</span>' : i === lessons ? '<span class="small muted"> · próxima sesión</span>' : ''}</span>
+      <span aria-hidden="true">›</span>
+    </button></li>`).join('');
+
+  show(`
+    <header class="row">
+      <button class="icon-btn" id="back" aria-label="Volver">←</button>
+      <h2>Tu plan de aprendizaje</h2>
+    </header>
+
+    <section class="card stack">
+      <h2>La meta</h2>
+      <p>Leer una partitura sencilla y tocarla con las dos manos. El camino tiene ${STAGES.length} etapas; cada una se apoya en la anterior.</p>
+    </section>
+
+    <section class="card stack">
+      <h2>Cómo es cada sesión</h2>
+      <div>${parts}</div>
+      <p class="small muted">Son unos 10 minutos. La sesión mínima de 2 minutos es solo práctica, para no perder la racha.</p>
+    </section>
+
+    <section class="card stack">
+      <h2>Las etapas</h2>
+      ${stages}
+      <p class="small muted">Las etapas 2 a 6 todavía no están construidas en la app. Se van a ir agregando en este orden.</p>
+    </section>
+
+    <section class="card stack">
+      <p class="eyebrow">Etapa 1 · Dónde estás</p>
+      <p><strong>Notas:</strong> ${unlocked} de ${NOTES.length} presentadas, ${firm} firmes.</p>
+      <div class="bar"><div style="width:${Math.round((firm / NOTES.length) * 100)}%"></div></div>
+      <p class="small muted">Orden: ${NOTES.map((n) => n.label).join(', ')}.</p>
+      <p><strong>Teoría:</strong> ${lessons} de ${LESSONS.length} lecciones.</p>
+      <div class="bar"><div style="width:${Math.round((lessons / LESSONS.length) * 100)}%"></div></div>
+    </section>
+
+    <section class="card stack">
+      <h2>Cómo avanzas</h2>
+      <ul class="plain-list">
+        <li>Cada nota tiene cinco niveles de dominio. Sube uno cuando la aciertas al primer intento y en menos de 4 segundos.</li>
+        <li>Si fallas, baja dos niveles y vuelve a aparecer pronto.</li>
+        <li>Una nota nueva aparece cuando todas las anteriores llegan al nivel 2.</li>
+        <li>Una nota cuenta como firme desde el nivel 3. La etapa termina con las 12 notas firmes y las 12 lecciones vistas.</li>
+      </ul>
+    </section>
+
+    <section class="card stack">
+      <h2>Lecciones de teoría</h2>
+      <p class="small muted">Llega una por sesión. Aquí puedes releerlas o adelantarte cuando quieras.</p>
+      <ul class="lesson-list">${lessonRows}</ul>
+    </section>
+  `);
+  $('#back').onclick = renderHome;
+  app.querySelectorAll('[data-lesson]').forEach((b) => {
+    b.onclick = () => renderLesson(Number(b.dataset.lesson), { inSession: false });
+  });
 }
 
 // ---------- prueba de micrófono ----------
@@ -396,16 +595,21 @@ async function renderMicTest() {
       <h2>Prueba de micrófono</h2>
     </header>
     <section class="card stack">
-      <p>Toca una tecla a la vez en tu teclado, con el volumen a la mitad o más. Aquí aparece la nota que la app oye.</p>
+      <p>Toca una tecla a la vez en tu teclado. Aquí aparece la nota que la app oye.</p>
       <div class="heard" id="heard">…</div>
       <div class="listen"><span>Volumen</span><div class="meter" style="width:160px"><div id="meter"></div></div></div>
       <p class="small muted center" id="msg">Pidiendo permiso para usar el micrófono…</p>
     </section>
     <section class="card stack">
       <h2>Qué comprobar</h2>
-      <p>1. Toca el Do central: debe decir “Do central”.</p>
-      <p>2. Toca Mi y Sol hacia la derecha: deben aparecer con su nombre.</p>
-      <p>3. Si no reconoce las notas, acerca el dispositivo al parlante del teclado y usa el sonido de piano (botón Portable Grand).</p>
+      <p>Toca el Do central, Mi y Sol, de a una y dejando sonar cada nota un segundo. Deben aparecer con su nombre.</p>
+      <h2>Si le cuesta oír</h2>
+      <ul class="plain-list">
+        <li>Apoya el dispositivo en el atril del teclado, con el micrófono (borde inferior del celular) hacia los parlantes.</li>
+        <li>Usa el sonido de piano: botón Portable Grand.</li>
+        <li>Quita la funda si tapa el micrófono y evita música o televisión de fondo.</li>
+        <li>Toca una sola tecla a la vez: los acordes no se reconocen.</li>
+      </ul>
     </section>
   `);
   $('#back').onclick = renderHome;
@@ -427,7 +631,7 @@ async function renderMicTest() {
   mic.onLevel = ({ level, midi }) => {
     const meter = $('#meter');
     if (!meter) return;
-    meter.style.width = Math.min(100, Math.round(level * 500)) + '%';
+    meter.style.width = meterPct(level) + '%';
   };
   mic.onNote = (midi) => {
     const heard = $('#heard');

@@ -1,5 +1,5 @@
 // Progreso guardado en el dispositivo (localStorage).
-import { NOTES, INTERVALS, MAX_BOX, FLUENT_MS, FIRST_SESSION_NOTES } from './data.js';
+import { NOTES, LESSONS, INTERVALS, MAX_BOX, FLUENT_MS, FIRST_SESSION_NOTES } from './data.js';
 
 const KEY = 'tenpiano.v1';
 const MAX_FREEZES = 2;
@@ -30,6 +30,7 @@ function fresh() {
     streak: 0,
     lastDay: null,
     freezes: 1,
+    lessonsDone: 0, // cuántas lecciones de teoría completó
     sessions: [], // { day, cards, firstTry, seconds, minimal }
     settings: { input: 'mic', strictOctave: true, showNames: false },
   };
@@ -176,4 +177,17 @@ export function weekSummary(today = todayStr()) {
   const cards = recent.reduce((a, s) => a + (s.cards || 0), 0);
   const firstTry = recent.reduce((a, s) => a + (s.firstTry || 0), 0);
   return { days, minutes: Math.round(seconds / 60), accuracy: cards ? Math.round((firstTry / cards) * 100) : null };
+}
+
+// ---- Teoría ----
+
+export function lessonsDone() {
+  return Math.min(state.lessonsDone || 0, LESSONS.length);
+}
+
+export function completeLesson(index) {
+  if (index === lessonsDone()) {
+    state.lessonsDone = index + 1;
+    save();
+  }
 }
