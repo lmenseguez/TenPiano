@@ -234,3 +234,17 @@ export function deleteSong(id) {
   state.mySongs = state.mySongs.filter((s) => s.id !== id);
   save();
 }
+
+// Los últimos 7 días, del más antiguo a hoy, con marca de si hubo práctica.
+export function lastDays(today = todayStr()) {
+  const practiced = new Set(state.sessions.map((s) => s.day));
+  const [y, m, d] = today.split('-').map(Number);
+  const names = ['D', 'L', 'M', 'X', 'J', 'V', 'S'];
+  const out = [];
+  for (let i = 6; i >= 0; i--) {
+    const dt = new Date(y, m - 1, d - i);
+    const key = todayStr(dt);
+    out.push({ label: names[dt.getDay()], done: practiced.has(key), today: i === 0 });
+  }
+  return out;
+}

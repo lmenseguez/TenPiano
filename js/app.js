@@ -5,7 +5,7 @@ import {
 import * as store from './store.js';
 import { buildSession, buildPlacement } from './session.js';
 import { drawStaff, drawKeyboard, drawExample, foldToKeyboard } from './staff.js';
-import { app, mic, show, $, $$, plural, heardLabel, pcName, meterPct, stopMic, startMic, BRAND, backHeader } from './ui.js';
+import { app, mic, show, $, $$, plural, heardLabel, pcName, meterPct, stopMic, startMic, BRAND, backHeader, icon, ring, celebrate, setNav } from './ui.js';
 import { renderSongs } from './songs.js';
 
 let session = null;
@@ -35,73 +35,73 @@ function renderHome() {
   const st = store.streakStatus();
   const week = store.weekSummary();
   const p = progress();
+  const pct = (v, t) => Math.round((v / t) * 100);
 
   let status;
-  if (st.doneToday) status = '<span class="badge badge-good">Hoy ya practicaste</span>';
-  else if (st.atRisk) status = `<span class="badge badge-warn">Si practicas hoy, tu racha sigue (usa ${plural(st.willUse, 'día de perdón', 'días de perdón')})</span>`;
-  else if (st.lost) status = '<span class="badge">La racha se reinició. Hoy empiezas una nueva.</span>';
-  else if (st.streak > 0) status = '<span class="badge badge-warn">Te falta la sesión de hoy</span>';
-  else status = '<span class="badge">Tu primera sesión te espera</span>';
+  if (st.doneToday) status = 'Hoy ya practicaste. Puedes repetir cuando quieras.';
+  else if (st.atRisk) status = `Si practicas hoy, tu racha sigue (usa ${plural(st.willUse, 'día de perdón', 'días de perdón')}).`;
+  else if (st.lost) status = 'La racha se reinició. Hoy empiezas una nueva.';
+  else if (st.streak > 0) status = 'Te falta la sesión de hoy para sumar un día.';
+  else status = 'Tu primera sesión te espera.';
 
-  const bar = (value, total) => `<div class="bar"><div style="width:${Math.round((value / total) * 100)}%"></div></div>`;
+  const days = store.lastDays().map((d) => `
+    <div class="day ${d.done ? 'day-on' : ''} ${d.today ? 'day-today' : ''}">
+      <span class="day-dot">${icon('check')}</span><span>${d.label}</span>
+    </div>`).join('');
 
   show(`
     <header class="row-between">
       ${BRAND}
-      <button class="icon-btn" id="settings" aria-label="Ajustes">⚙</button>
+      <span class="pill pill-fire" aria-label="Racha: ${plural(st.streak, 'día', 'días')}">${icon('flame')}${st.streak}</span>
     </header>
 
-    <section class="card stack">
-      <div class="streak">
-        <span class="streak-num">${st.streak}</span>
-        <span>${st.streak === 1 ? 'día seguido' : 'días seguidos'}</span>
+    <section class="hero">
+      <p class="eyebrow">${st.doneToday ? 'Sesión completada' : 'Sesión de hoy'}</p>
+      <h2>${st.doneToday ? 'Una vuelta más' : '10 minutos de piano'}</h2>
+      <div class="hero-steps">
+        <span>${icon('book')}Teoría</span><span>${icon('keys')}Acordes</span><span>${icon('staff')}Pentagrama</span>
       </div>
-      <div>${status}</div>
-      <p class="small muted">Días de perdón disponibles: ${state.freezes}. Si un día no puedes, la racha no se rompe.</p>
+      <button class="hero-go" id="start">${icon('play')}${st.doneToday ? 'Practicar otra vez' : 'Empezar'}</button>
     </section>
 
-    <section class="stack">
-      <button class="btn btn-primary" id="start">${st.doneToday ? 'Practicar otra vez' : 'Empezar la sesión de hoy'}<small>Unos 10 minutos: teoría, acordes y pentagrama</small></button>
-      <button class="btn" id="start-min">Sesión mínima<small>2 minutos de práctica, para los días difíciles</small></button>
-      <button class="btn" id="songs">Canciones<small>En cifrado y en partitura</small></button>
+    <section class="tiles">
+      <button class="tile" id="start-min">
+        <span class="tile-ico warm">${icon('bolt')}</span>
+        <strong>Sesión mínima</strong>
+        <span class="small muted">2 minutos, para los días difíciles</span>
+      </button>
+      <button class="tile" id="mictest">
+        <span class="tile-ico violet">${icon('mic')}</span>
+        <strong>Probar micrófono</strong>
+        <span class="small muted">Comprueba que oye tu teclado</span>
+      </button>
     </section>
 
     <section class="card stack">
+      <div class="row-between">
+        <h2>Esta semana</h2>
+        <span class="small muted">${plural(week.minutes, 'minuto', 'minutos')}</span>
+      </div>
+      <div class="week">${days}</div>
+      <p class="small muted">${status}${week.accuracy === null ? '' : ` Aciertos al primer intento: ${week.accuracy}%.`} Días de perdón: ${state.freezes}.</p>
+    </section>
+
+    <section class="card stack">
+      <div class="row-between"><h2>Tu avance</h2><button class="link" id="path">Ver plan</button></div>
+      <div class="rings">
+        <div>${ring(pct(p.chordsFirm, CHORDS.length), `${p.chordsFirm}/${CHORDS.length}`)}<div class="small"><strong>Acordes</strong></div></div>
+        <div>${ring(pct(p.notesFirm, NOTES.length), `${p.notesFirm}/${NOTES.length}`, { color: 'url(#g-violet)' })}<div class="small"><strong>Pentagrama</strong></div></div>
+        <div>${ring(pct(p.lessons, TOTAL_LESSONS), `${p.lessons}/${TOTAL_LESSONS}`, { color: 'url(#g-warm)' })}<div class="small"><strong>Teoría</strong></div></div>
+      </div>
       <p class="eyebrow">Tu meta</p>
-      <p>Leer y tocar con fluidez ${GOALS.map((g) => `<strong>${g.title}</strong>`).join(' y ')}.</p>
-      <div>
-        <p class="small"><strong>Acordes y cifrado</strong> · ${p.chordsFirm} de ${CHORDS.length} firmes</p>
-        ${bar(p.chordsFirm, CHORDS.length)}
-      </div>
-      <div>
-        <p class="small"><strong>Pentagrama</strong> · ${p.notesFirm} de ${NOTES.length} notas firmes</p>
-        ${bar(p.notesFirm, NOTES.length)}
-      </div>
-      <div>
-        <p class="small"><strong>Teoría</strong> · ${p.lessons} de ${TOTAL_LESSONS} lecciones</p>
-        ${bar(p.lessons, TOTAL_LESSONS)}
-      </div>
-      <button class="btn" id="path">Ver mi plan de aprendizaje<small>Qué vas a aprender, en qué orden y qué falta para tu meta</small></button>
+      ${GOALS.map((g) => `<div class="goal-chip"><span class="tile-ico">${icon('target')}</span><span class="grow"><strong>${g.title}</strong><br><span class="small muted">${g.by}</span></span></div>`).join('')}
     </section>
-
-    <section class="card stack">
-      <h2>Últimos 7 días</h2>
-      <div class="stats">
-        <div><div class="stat-num">${week.days}</div><div class="small muted">días</div></div>
-        <div><div class="stat-num">${week.minutes}</div><div class="small muted">minutos</div></div>
-        <div><div class="stat-num">${week.accuracy === null ? '–' : week.accuracy + '%'}</div><div class="small muted">al primer intento</div></div>
-      </div>
-    </section>
-
-    <button class="btn" id="mictest">Probar el micrófono<small>Comprueba que la app oye tu teclado</small></button>
     ${store.isMemoryOnly() ? '<p class="small muted center">Este navegador no permite guardar el progreso. Lo que practiques se perderá al cerrar.</p>' : ''}
-  `);
+  `, { tab: 'today' });
 
   $('#start').onclick = () => startSession({ minimal: false });
   $('#start-min').onclick = () => startSession({ minimal: true });
-  $('#songs').onclick = () => renderSongs(renderHome);
   $('#mictest').onclick = renderMicTest;
-  $('#settings').onclick = renderSettings;
   $('#path').onclick = renderPath;
 }
 
@@ -138,11 +138,11 @@ function sessionShell(inner) {
   const pct = Math.round((session.index / session.steps.length) * 100);
   show(`
     <header class="row">
-      <button class="icon-btn" id="quit" aria-label="Salir de la sesión">✕</button>
+      <button class="icon-btn" id="quit" aria-label="Salir de la sesión">${icon('close')}</button>
       <div class="progress grow" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><div style="width:${pct}%"></div></div>
     </header>
     ${inner}
-  `);
+  `, { animate: session.index === 0 || ['section', 'theory', 'intro', 'chord-intro'].includes(session.steps[session.index]?.type) });
   $('#quit').onclick = () => {
     store.save();
     renderHome();
@@ -174,6 +174,7 @@ function renderSection(step) {
   sessionShell(`
     <div class="spacer"></div>
     <section class="stack center">
+      <div class="section-ico">${icon(step.title === 'Acordes' ? 'keys' : 'staff')}</div>
       <p class="eyebrow">Ahora</p>
       <h1>${step.title}</h1>
       <p class="muted">${step.text}</p>
@@ -186,7 +187,7 @@ function renderSection(step) {
 
 function listenRow(text = 'Escuchando tu teclado') {
   if (session.input !== 'mic') return '';
-  return `<div class="listen"><span>${text}</span><div class="meter" aria-hidden="true"><div id="meter"></div></div></div>`;
+  return `<div class="listen">${icon('mic')}<span>${text}</span><div class="meter" aria-hidden="true"><div id="meter"></div></div></div>`;
 }
 
 function bindMic(onNote) {
@@ -645,15 +646,17 @@ function finishSession() {
   if (result.earnedFreeze) extra += '<p class="small muted">Ganaste un día de perdón por tu constancia.</p>';
 
   show(`
-    <header><h1>Sesión terminada</h1></header>
-    <section class="card stack">
-      <div class="streak"><span class="streak-num">${result.streak}</span><span>${result.streak === 1 ? 'día seguido' : 'días seguidos'}</span></div>
+    <header class="center"><p class="eyebrow">Sesión terminada</p><h1 class="title grad-text">¡Bien hecho!</h1></header>
+    <section class="card stack center">
+      ${ring(acc, `${acc}%`, { big: true })}
+      <p class="muted">al primer intento</p>
+      <div><span class="pill pill-fire">${icon('flame')}${plural(result.streak, 'día seguido', 'días seguidos')}</span></div>
       ${extra}
     </section>
     <section class="card stack">
       <div class="stats">
         <div><div class="stat-num">${session.answered}</div><div class="small muted">ejercicios</div></div>
-        <div><div class="stat-num">${acc}%</div><div class="small muted">al primer intento</div></div>
+        <div><div class="stat-num">${session.firstTry}</div><div class="small muted">aciertos directos</div></div>
         <div><div class="stat-num">${mins}:${String(secs).padStart(2, '0')}</div><div class="small muted">tiempo</div></div>
       </div>
       ${session.lesson ? `<p>Teoría de hoy: ${session.lesson}.</p>` : ''}
@@ -663,6 +666,7 @@ function finishSession() {
     <div class="spacer"></div>
     <button class="btn btn-primary" id="home">Listo</button>
   `);
+  celebrate();
   $('#home').onclick = renderHome;
 }
 
@@ -672,9 +676,10 @@ function finishPlacement() {
   store.applyPlacement(known);
   const labels = known.map((m) => NOTE_BY_MIDI.get(m).label);
   show(`
-    <header><h1>Prueba terminada</h1></header>
-    <section class="card stack">
-      <div class="streak"><span class="streak-num">${known.length}</span><span>de ${NOTES.length} notas reconocidas</span></div>
+    <header class="center"><p class="eyebrow">Prueba de nivel</p><h1 class="title">Resultado</h1></header>
+    <section class="card stack center">
+      ${ring(Math.round((known.length / NOTES.length) * 100), `${known.length}/${NOTES.length}`, { big: true, color: 'url(#g-violet)' })}
+      <p class="muted">notas reconocidas</p>
       ${known.length
         ? `<p>Quedan como firmes: ${labels.join(', ')}. Solo van a aparecer en repasos espaciados.</p>`
         : '<p>Ninguna quedó como firme, así que el pentagrama empieza desde el principio. Es el punto de partida normal.</p>'}
@@ -683,7 +688,7 @@ function finishPlacement() {
     <div class="spacer"></div>
     <button class="btn btn-primary" id="home">Listo</button>
   `);
-  $('#home').onclick = renderHome;
+  $('#home').onclick = renderPath;
 }
 
 // ---------- tu plan ----------
@@ -700,7 +705,7 @@ function renderPath() {
     <div class="goal">
       <p><strong>${g.title}</strong> <span class="small muted">· ${g.by}</span></p>
       <ul class="check-list small">
-        ${g.needs.map((n) => `<li class="${n.ready ? 'check-on' : ''}"><span aria-hidden="true">${n.ready ? '●' : '○'}</span><span>${n.text} <span class="muted">· ${n.ready ? 'ya se entrena en la app' : 'próximamente'}</span></span></li>`).join('')}
+        ${g.needs.map((n) => `<li class="${n.ready ? 'check-on' : ''}">${icon(n.ready ? 'check' : 'target')}<span>${n.text} <span class="muted">· ${n.ready ? 'ya se entrena en la app' : 'próximamente'}</span></span></li>`).join('')}
       </ul>
     </div>`).join('');
 
@@ -737,15 +742,15 @@ function renderPath() {
 
   const lessonRows = (track) => LESSONS[track].map((l, i) => {
     const done = store.lessonsDone(track);
-    return `<li><button class="lesson-row" data-track="${track}" data-lesson="${i}">
-      <span class="lesson-mark" aria-hidden="true">${i < done ? '✓' : i + 1}</span>
+    return `<li class="${i < done ? 'lesson-done' : ''}"><button class="lesson-row" data-track="${track}" data-lesson="${i}">
+      <span class="lesson-mark" aria-hidden="true">${i < done ? icon('check') : i + 1}</span>
       <span class="grow">${l.title}${i < done ? '<span class="small muted"> · vista</span>' : ''}</span>
-      <span aria-hidden="true">›</span>
+      ${icon('chevron')}
     </button></li>`;
   }).join('');
 
   show(`
-    ${backHeader('Tu plan de aprendizaje')}
+    <header><h1 class="title">Tu plan</h1></header>
 
     <section class="card stack">
       <p class="eyebrow">Tu meta</p>
@@ -792,8 +797,7 @@ function renderPath() {
       <p class="small muted">Llega una lección por sesión, alternando caminos. Aquí puedes releerlas o adelantarte.</p>
       <ul class="lesson-list">${lessonRows('staff')}</ul>
     </section>
-  `);
-  $('#back').onclick = renderHome;
+  `, { tab: 'plan' });
   $('#placement').onclick = () => startSession({ placement: true });
   $$('[data-lesson]').forEach((b) => {
     b.onclick = () => renderLesson(b.dataset.track, Number(b.dataset.lesson), { inSession: false });
@@ -808,7 +812,7 @@ async function renderMicTest() {
     <section class="card stack">
       <p>Toca una tecla a la vez en tu teclado. Aquí aparece la nota que la app oye.</p>
       <div class="heard" id="heard">…</div>
-      <div class="listen"><span>Volumen</span><div class="meter" style="width:160px"><div id="meter"></div></div></div>
+      <div class="listen">${icon('mic')}<span>Volumen</span><div class="meter" style="width:160px"><div id="meter"></div></div></div>
       <p class="small muted center" id="msg">Pidiendo permiso para usar el micrófono…</p>
     </section>
     <section class="card stack">
@@ -850,14 +854,14 @@ async function renderMicTest() {
 
 // ---------- ajustes ----------
 
-function renderSettings() {
+function renderSettings(keepScroll = 0) {
   const s = store.getState().settings;
   const seg = (name, options) => `
     <div class="seg" role="group">
       ${options.map(([value, label]) => `<button data-set="${name}" data-value="${value}" aria-pressed="${s[name] === value}">${label}</button>`).join('')}
     </div>`;
   show(`
-    ${backHeader('Ajustes')}
+    <header><h1 class="title">Ajustes</h1></header>
     <section class="card">
       <div class="setting setting-block">
         <p><strong>Cómo respondes</strong></p>
@@ -883,12 +887,12 @@ function renderSettings() {
       <p class="small muted">Borra lo aprendido y la racha de este dispositivo. Tus canciones se conservan.</p>
       <button class="btn" id="reset">Reiniciar</button>
     </section>
-  `);
-  $('#back').onclick = renderHome;
+  `, { tab: 'settings', animate: !keepScroll });
+  if (keepScroll) window.scrollTo(0, keepScroll);
   $$('[data-set]').forEach((b) => {
     b.onclick = () => {
       store.setSetting(b.dataset.set, b.dataset.value);
-      renderSettings();
+      renderSettings(window.scrollY || 1);
     };
   });
   $('#strict').onchange = (e) => store.setSetting('strictOctave', e.target.checked);
@@ -897,7 +901,7 @@ function renderSettings() {
     $('#reset-box').innerHTML = `
       <p><strong>¿Seguro? No se puede deshacer.</strong></p>
       <div class="row"><button class="btn" id="no">Cancelar</button><button class="btn btn-primary" id="yes">Sí, borrar</button></div>`;
-    $('#no').onclick = renderSettings;
+    $('#no').onclick = () => renderSettings();
     $('#yes').onclick = () => {
       store.resetAll();
       renderHome();
@@ -919,5 +923,7 @@ document.addEventListener('visibilitychange', () => {
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
   navigator.serviceWorker.register('sw.js').catch(() => {});
 }
+
+setNav({ today: renderHome, songs: () => renderSongs(renderHome), plan: renderPath, settings: () => renderSettings() });
 
 renderHome();

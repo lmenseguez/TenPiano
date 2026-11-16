@@ -2,7 +2,7 @@
 import { PROGRESSIONS, SONGS, NOTE_BY_MIDI, parseChord, chordText } from './data.js';
 import * as store from './store.js';
 import { drawKeyboard, drawMelodyLine, foldToKeyboard } from './staff.js';
-import { mic, show, $, $$, esc, heardLabel, meterPct, stopMic, startMic, backHeader } from './ui.js';
+import { mic, show, $, $$, esc, heardLabel, meterPct, stopMic, startMic, backHeader, icon, ring, celebrate } from './ui.js';
 import { keepAwake } from './audio.js';
 
 let goHome = () => {};
@@ -45,46 +45,38 @@ export function renderSongs(home) {
   leave();
   const mine = store.getState().mySongs;
   const notation = store.getState().settings.notation;
-  const line = (ids) => ids.map((id) => chordText(parseChord(id), notation === 'names' ? 'names' : 'letters')).join(' · ');
+  const pills = (ids) => `<span class="chord-pills">${ids.map((id) => `<span>${chordText(parseChord(id), notation === 'names' ? 'names' : 'letters')}</span>`).join('')}</span>`;
 
   show(`
-    ${backHeader('Canciones')}
+    <header><h1 class="title">Canciones</h1></header>
 
-    <section class="card stack">
-      <p class="eyebrow">En cifrado</p>
-      <h2>Tus canciones</h2>
-      <p class="small muted">Carga los acordes de cualquier canción y tócala con un pulso que marca los cambios.</p>
+    <section class="stack">
+      <p class="eyebrow">En cifrado · Tus canciones</p>
       ${mine.length
-        ? `<ul class="lesson-list">${mine.map((s) => `<li><button class="lesson-row" data-mine="${esc(s.id)}"><span class="grow">${esc(s.title)}</span><span aria-hidden="true">›</span></button></li>`).join('')}</ul>`
-        : '<p class="small">Todavía no cargaste ninguna.</p>'}
-      <button class="btn" id="add">Agregar una canción</button>
+        ? `<ul class="list">${mine.map((s) => `<li><button class="list-row" data-mine="${esc(s.id)}"><span class="tile-ico warm">${icon('star')}</span><span class="grow"><strong>${esc(s.title)}</strong></span>${icon('chevron')}</button></li>`).join('')}</ul>`
+        : '<p class="small muted">Carga los acordes de cualquier canción y tócala con un pulso que marca los cambios.</p>'}
+      <button class="btn" id="add">${icon('plus')} Agregar una canción</button>
     </section>
 
-    <section class="card stack">
-      <p class="eyebrow">En cifrado</p>
-      <h2>Progresiones</h2>
-      <p class="small muted">Las secuencias de acordes más usadas. Cada acorde dura un compás.</p>
-      <ul class="lesson-list">
-        ${PROGRESSIONS.map((p) => `<li><button class="lesson-row" data-prog="${p.id}">
-          <span class="grow">${p.title}<br><span class="small muted">${line(p.chords)}</span></span><span aria-hidden="true">›</span></button></li>`).join('')}
+    <section class="stack">
+      <p class="eyebrow">En cifrado · Progresiones</p>
+      <ul class="list">
+        ${PROGRESSIONS.map((p) => `<li><button class="list-row" data-prog="${p.id}">
+          <span class="tile-ico">${icon('keys')}</span>
+          <span class="grow"><strong>${p.title}</strong>${pills(p.chords)}</span>${icon('chevron')}</button></li>`).join('')}
       </ul>
     </section>
 
-    <section class="card stack">
-      <p class="eyebrow">En partitura</p>
-      <h2>Melodías con acordes</h2>
-      <p class="small muted">Lees la melodía en el pentagrama y la app comprueba cada nota. Los acordes van escritos arriba, para la mano izquierda.</p>
-      <ul class="lesson-list">
-        ${SONGS.map((s) => `<li><button class="lesson-row" data-song="${s.id}">
-          <span class="grow">${s.title}<br><span class="small muted">${s.by}</span></span><span aria-hidden="true">›</span></button></li>`).join('')}
+    <section class="stack">
+      <p class="eyebrow">En partitura · Melodías con acordes</p>
+      <ul class="list">
+        ${SONGS.map((s) => `<li><button class="list-row" data-song="${s.id}">
+          <span class="tile-ico violet">${icon('staff')}</span>
+          <span class="grow"><strong>${s.title}</strong><br><span class="small muted">${s.by}</span></span>${icon('chevron')}</button></li>`).join('')}
       </ul>
-      <p class="small muted">Son obras de dominio público. Las canciones con derechos de autor no pueden incluirse en partitura.</p>
+      <p class="small muted">Lees la melodía y la app comprueba cada nota; los acordes van escritos arriba. Son obras de dominio público: las canciones con derechos de autor no pueden incluirse en partitura.</p>
     </section>
-  `);
-  $('#back').onclick = () => {
-    leave();
-    goHome();
-  };
+  `, { tab: 'songs' });
   $('#add').onclick = () => renderEditor(null);
   $$('[data-prog]').forEach((b) => {
     b.onclick = () => {
@@ -342,7 +334,7 @@ async function renderMelody(song) {
     <div class="paper" id="line-a" data-keep-mic></div>
     <div class="paper paper-next" id="line-b"></div>
     <p class="feedback" id="feedback" role="status"></p>
-    ${input === 'mic' ? '<div class="listen"><span>Escuchando tu teclado</span><div class="meter" aria-hidden="true"><div id="meter"></div></div></div>' : ''}
+    ${input === 'mic' ? '<div class="listen">' + icon('mic') + '<span>Escuchando tu teclado</span><div class="meter" aria-hidden="true"><div id="meter"></div></div></div>' : ''}
     ${micNote ? `<p class="small muted center">${micNote}</p>` : ''}
     <div class="keys-box" id="keys" ${state.showKeys ? '' : 'hidden'}></div>
     <p class="small muted">Mano derecha: la melodía. Cuando te salga, agrega con la izquierda el acorde escrito arriba, una vez por compás.</p>
@@ -383,7 +375,8 @@ async function renderMelody(song) {
     const seconds = Math.round((Date.now() - state.started) / 1000);
     show(`
       ${backHeader(esc(song.title))}
-      <section class="card stack">
+      <section class="card stack center">
+        ${ring(Math.round((Math.max(0, notes.length - state.errors) / notes.length) * 100), icon('check'), { big: true })}
         <h2>Canción completa</h2>
         <div class="stats">
           <div><div class="stat-num">${notes.length}</div><div class="small muted">notas</div></div>
@@ -396,6 +389,7 @@ async function renderMelody(song) {
       <button class="btn btn-primary" id="again">Tocarla otra vez</button>
       <button class="btn" id="list">Volver a Canciones</button>
     `);
+    celebrate();
     $('#back').onclick = () => renderSongs();
     $('#list').onclick = () => renderSongs();
     $('#again').onclick = () => renderMelody(song);
