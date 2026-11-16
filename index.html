@@ -17,6 +17,27 @@
 <body>
   <main id="app" aria-live="polite"></main>
   <noscript>Esta app necesita JavaScript para funcionar.</noscript>
+  <script>
+    // Si la app no llega a mostrarse (por ejemplo, justo después de una actualización,
+    // cuando el navegador mezcla archivos viejos y nuevos), ofrece recargar limpiando la copia guardada.
+    window.addEventListener('load', function () {
+      setTimeout(function () {
+        var app = document.getElementById('app');
+        if (!app || app.children.length) return;
+        app.innerHTML = '<div class="card stack"><h2>La app se está actualizando</h2>' +
+          '<p>Toca el botón para cargar la versión nueva. Tu progreso no se pierde.</p>' +
+          '<button class="btn btn-primary" id="fix">Recargar</button>' +
+          '<p class="small muted">Si vuelve a aparecer este mensaje, espera un par de minutos y prueba de nuevo.</p></div>';
+        document.getElementById('fix').onclick = function () {
+          var go = function () { location.replace(location.pathname + '?r=' + Date.now()); };
+          var jobs = [];
+          if (navigator.serviceWorker) jobs.push(navigator.serviceWorker.getRegistrations().then(function (rs) { return Promise.all(rs.map(function (r) { return r.unregister(); })); }));
+          if (window.caches) jobs.push(caches.keys().then(function (ks) { return Promise.all(ks.map(function (k) { return caches.delete(k); })); }));
+          Promise.all(jobs).then(go, go);
+        };
+      }, 2500);
+    });
+  </script>
   <script src="vendor/vexflow.js"></script>
   <script type="module" src="js/app.js"></script>
 </body>
