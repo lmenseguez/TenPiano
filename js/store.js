@@ -1,6 +1,6 @@
 // Progreso guardado en el dispositivo (localStorage).
 import {
-  NOTES, BASS_NOTES, CHORDS, KNOWN_CHORDS, LESSONS, INTERVALS, MAX_BOX, FLUENT_MS, FLUENT_CHORD_MS,
+  NOTES, BASS_NOTES, CHORDS, KNOWN_CHORDS, ACHIEVEMENTS, LESSONS, INTERVALS, MAX_BOX, FLUENT_MS, FLUENT_CHORD_MS,
   FIRST_SESSION_NOTES, NEW_PER_SESSION,
 } from './data.js';
 
@@ -38,6 +38,9 @@ function fresh() {
     freezes: 1,
     sessions: [], // { day, cards, firstTry, seconds, minimal }
     mySongs: [], // { id, title, text }
+    songsDone: {}, // id de melodía -> menor cantidad de errores
+    achievements: {}, // id de logro -> día en que se consiguió
+    welcomed: false,
     settings: { input: 'mic', strictOctave: true, showNames: false, notation: 'both', tempo: 70, click: true },
   };
 }
@@ -80,6 +83,7 @@ export function resetAll() {
   state = fresh();
   state.settings = settings;
   state.mySongs = mySongs;
+  state.welcomed = true;
   save();
 }
 
@@ -269,4 +273,63 @@ export function importData(text) {
   } catch (e) {
     return false;
   }
+}
+
+// ---- Logros ----
+
+export function recordSong(id, errors) {
+  const best = state.songsDone[id];
+  if (best === undefined || errors < best) state.songsDone[id] = errors;
+  save();
+}
+
+// Contadores con los que se evalúan los logros.
+export function counters() {
+  const firmOf = (kind, ids) => ids.filter((id) => (table(kind)[id]?.box || 0) >= 3).length;
+  return {
+    sessions: state.sessions.length,
+    streak: state.streak,
+    minutes: Math.round(state.sessions.reduce((a, s) => a + (s.seconds || 0), 0) / 60),
+    perfect: state.sessions.filter((s) => s.cards >= 10 && s.firstTry === s.cards).length,
+    chordsFirm: firmCount('c'),
+    knownFirm: firmOf('c', KNOWN_CHORDS),
+    riverFirm: firmOf('c', ['F#m', 'D', 'A', 'E']),
+    trebleFirm: firmCount('n'),
+    bassFirm: firmCount('b'),
+    lessons: lessonsDone('chords') + lessonsDone('staff'),
+    cleanSongs: Object.values(state.songsDone).filter((e) => e === 0).length,
+  };
+}
+
+// Marca los logros recién cumplidos y los devuelve.
+export function checkAchievements(today = todayStr()) {
+  const c = counters();
+  const fresh = [];
+  for (const a of ACHIEVEMENTS) {
+    if (!state.achievements[a.id] && c[a.key] >= a.target) {
+      state.achievements[a.id] = today;
+      fresh.push(a);
+    }
+  }
+  if (fresh.length) save();
+  return fresh;
+}
+
+export const hasAchievement = (id) => !!state.achievements[id];
+
+// El logro pendiente que está más cerca, con lo que falta.
+export function nextAchievement() {
+  const c = counters();
+  let best = null;
+  for (const a of ACHIEVEMENTS) {
+    if (state.achievements[a.id]) continue;
+    const ratio = Math.min(c[a.key] / a.target, 0.999);
+    if (!best || ratio > best.ratio) best = { ...a, ratio, left: a.target - c[a.key] };
+  }
+  return best;
+}
+
+export function setWelcomed() {
+  state.welcomed = true;
+  save();
 }

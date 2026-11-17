@@ -372,6 +372,8 @@ async function renderMelody(song) {
 
   function finish() {
     stopMic();
+    store.recordSong(song.id, state.errors);
+    const badges = store.checkAchievements();
     const seconds = Math.round((Date.now() - state.started) / 1000);
     show(`
       ${backHeader(esc(song.title))}
@@ -385,6 +387,7 @@ async function renderMelody(song) {
         </div>
         <p class="muted">${state.errors === 0 ? 'Sin errores. Prueba ahora sumando los acordes con la mano izquierda.' : 'Repítela hasta que salga sin errores, y después suma los acordes con la mano izquierda.'}</p>
       </section>
+      ${badges.length ? `<section class="card stack"><p class="eyebrow">Logro desbloqueado</p>${badges.map((b) => `<div class="badge-card badge-new"><span class="tile-ico warm">${icon(b.icon)}</span><span class="grow"><strong>${b.title}</strong><br><span class="small muted">${b.text}</span></span></div>`).join('')}</section>` : ''}
       <div class="spacer"></div>
       <button class="btn btn-primary" id="again">Tocarla otra vez</button>
       <button class="btn" id="list">Volver a Canciones</button>
@@ -430,6 +433,10 @@ async function renderMelody(song) {
   }
   if (input === 'mic') {
     mic.onNote = answer;
+    mic.expect = (midi) => {
+      const target = notes[Math.min(state.pos, notes.length - 1)].midi;
+      return midi === target || (!settings.strictOctave && ((midi - target) % 12 + 12) % 12 === 0);
+    };
     mic.onLevel = ({ level }) => {
       const meter = $('#meter');
       if (meter) meter.style.width = meterPct(level) + '%';

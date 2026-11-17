@@ -95,28 +95,60 @@ export class PitchDetector {
 }
 
 // Convierte la secuencia de detecciones en eventos de "nota tocada".
-// Vota entre las últimas lecturas (tolera lecturas sueltas fallidas) y exige
-// un ataque nuevo antes de aceptar otra vez la misma nota.
+//
+// Cuando se toca una tecla mientras la anterior todavía suena, los dos sonidos
+// se mezclan un instante y la lectura salta entre ambas notas (o da una tercera
+// que no existe). Para que eso no genere notas falsas:
+//  - cada nota aceptada necesita un ataque: una subida brusca de volumen;
+//  - cada ataque sirve para una sola nota;
+//  - la nota que la app espera se confirma rápido, y cualquier otra necesita
+//    sostenerse más tiempo antes de contarse.
 export class NoteTracker {
-  constructor({ gate = 0.004, windowMs = 260, votes = 4 } = {}) {
+  constructor({ gate = 0.004, windowMs = 340, votes = 4, strictVotes = 7, strictSpanMs = 230, onsetRatio = 1.22, onsetLifeMs = 700 } = {}) {
     this.gate = gate;
     this.windowMs = windowMs;
     this.votes = votes;
+    this.strictVotes = strictVotes;
+    this.strictSpanMs = strictSpanMs;
+    this.onsetRatio = onsetRatio;
+    this.onsetLifeMs = onsetLifeMs;
     this.history = []; // { midi, t }
+    this.levels = []; // volumen de los últimos cuadros
     this.quiet = 0;
-    this.armed = true;
+    this.inAttack = false;
+    this.prevLevel = 0;
+    this.onsetAt = -Infinity; // momento del último ataque
+    this.fired = new Set(); // notas ya aceptadas con este ataque
+    this.carry = null; // nota que ya sonaba cuando llegó el ataque
     this.lastMidi = null;
-    this.levelAtFire = 0;
-    this.minSinceFire = 0;
     this.current = null; // nota que se oye ahora mismo
+    this.expected = null; // (midi) => boolean: lo que la app espera oír, o null
   }
 
   // Devuelve un número MIDI cuando se confirma una nota nueva; si no, null.
   push(result, level, now) {
+    // Ataque: el volumen sube con claridad respecto del mínimo reciente.
+    // Cuenta una sola vez por tecla: mientras el volumen sigue subiendo es el mismo ataque.
+    const floor = this.levels.length ? Math.min(...this.levels) : 0;
+    if (this.inAttack) {
+      if (level < this.prevLevel) {
+        this.inAttack = false;
+        this.levels = []; // desde el pico, el mínimo de referencia vuelve a empezar
+      }
+    } else if (level >= this.gate && level > Math.max(floor, this.gate * 0.5) * this.onsetRatio) {
+      this.inAttack = true;
+      this.onsetAt = now;
+      this.fired.clear();
+      this.carry = this.current;
+      this.history.length = 0; // lo anterior al ataque no vota por la nota nueva
+    }
+    this.prevLevel = level;
+    this.levels.push(level);
+    if (this.levels.length > 5) this.levels.shift();
+
     if (level < this.gate) {
       this.quiet += 1;
       if (this.quiet >= 2) {
-        this.armed = true;
         this.history.length = 0;
         this.current = null;
       }
@@ -128,7 +160,7 @@ export class NoteTracker {
     if (result) {
       const midiFloat = freqToMidi(result.freq);
       const rounded = Math.round(midiFloat);
-      // Lo muy desafinado suele ser ruido o voz.
+      // Lo muy desafinado suele ser ruido, voz o dos notas mezcladas.
       if (Math.abs(midiFloat - rounded) <= 0.4) midi = rounded;
     }
     this.history.push({ midi, t: now });
@@ -136,30 +168,32 @@ export class NoteTracker {
 
     // Nota más votada en la ventana reciente.
     const counts = new Map();
-    for (const h of this.history) if (h.midi !== null) counts.set(h.midi, (counts.get(h.midi) || 0) + 1);
+    for (const h of this.history) {
+      if (h.midi === null) continue;
+      const c = counts.get(h.midi) || { n: 0, first: h.t, last: h.t };
+      c.n += 1;
+      c.last = h.t;
+      counts.set(h.midi, c);
+    }
     let winner = null;
-    let top = 0;
-    for (const [m, c] of counts) if (c > top) { top = c; winner = m; }
-    if (top < this.votes) return null;
+    let top = { n: 0 };
+    for (const [m, c] of counts) if (c.n > top.n) { top = c; winner = m; }
+    if (top.n < this.votes) return null;
     this.current = winner;
 
-    if (!this.armed) {
-      this.minSinceFire = Math.min(this.minSinceFire, level);
-      if (winner !== this.lastMidi) {
-        this.armed = true;
-      } else if (this.minSinceFire < this.levelAtFire * 0.5 && level > this.minSinceFire * 1.6) {
-        this.armed = true; // misma tecla, tocada otra vez
-      }
+    // Sin un ataque reciente no hay nota nueva: es la cola de la anterior.
+    if (now - this.onsetAt > this.onsetLifeMs || this.fired.has(winner)) return null;
+
+    // Una nota que la app no espera tiene que sostenerse más para contar, y nunca
+    // cuenta si es la que ya venía sonando antes del ataque.
+    if (this.expected && !this.expected(winner)) {
+      if (winner === this.carry) return null;
+      if (top.n < this.strictVotes || top.last - top.first < this.strictSpanMs) return null;
     }
 
-    if (this.armed) {
-      this.armed = false;
-      this.lastMidi = winner;
-      this.levelAtFire = level;
-      this.minSinceFire = level;
-      return winner;
-    }
-    return null;
+    this.fired.add(winner); // cada ataque acepta una nota una sola vez
+    this.lastMidi = winner;
+    return winner;
   }
 }
 

@@ -11,6 +11,7 @@ export class MicListener {
     this.tracker = null;
     this.timer = null;
     this.onNote = null; // (midi) => void
+    this.expect = null; // (midi) => boolean: la nota que la app espera oír ahora
     this.onLevel = null; // ({ level, midi }) => void
   }
 
@@ -62,6 +63,7 @@ export class MicListener {
     this.analyser.getFloatTimeDomainData(this.buffer);
     const level = rms(this.buffer);
     this.tracker.gate = this.noise.update(level);
+    this.tracker.expected = this.expect;
     const result = level >= this.tracker.gate ? this.detector.detect(this.buffer) : null;
     const midi = this.tracker.push(result, level, performance.now());
     if (this.onLevel) this.onLevel({ level, gate: this.tracker.gate, midi: this.tracker.current });

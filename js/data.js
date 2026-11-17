@@ -250,7 +250,7 @@ export const TRACKS = [
 // Las piezas que quieres llegar a leer y tocar, y lo que exige cada una.
 export const GOALS = [
   {
-    title: 'River Flows in You', by: 'Yiruma',
+    title: 'River Flows in You', by: 'Yiruma', chords: ['F#m', 'D', 'A', 'E'],
     needs: [
       { text: 'Acordes F#m, D, A y E, su progresión principal', track: 'chords', ready: true },
       { text: 'Leer las notas en clave de sol', track: 'staff', ready: true },
@@ -645,4 +645,27 @@ export const SONGS = [
     bars: melody(`g4:8 g4:8 | a4:q:C g4:q c5:q | b4:h:G g4:8 g4:8 | a4:q g4:q d5:q | c5:h:C g4:8 g4:8 |
       g5:q e5:q c5:q | b4:q:F a4:q f5:8 f5:8 | e5:q:C c5:q d5:q:G | c5:hd:C`),
   },
+];
+
+// ---------- Logros ----------
+// Cada logro se cumple cuando un contador (key) llega a su meta (target).
+export const ACHIEVEMENTS = [
+  { id: 'first', icon: 'star', title: 'Primera clase', text: 'Completar tu primera sesión.', key: 'sessions', target: 1, unit: ['sesión', 'sesiones'] },
+  { id: 's3', icon: 'flame', title: 'Tres seguidos', text: 'Practicar 3 días seguidos.', key: 'streak', target: 3, unit: ['día', 'días'] },
+  { id: 's7', icon: 'flame', title: 'Una semana entera', text: 'Practicar 7 días seguidos.', key: 'streak', target: 7, unit: ['día', 'días'] },
+  { id: 's14', icon: 'flame', title: 'Dos semanas', text: 'Practicar 14 días seguidos.', key: 'streak', target: 14, unit: ['día', 'días'] },
+  { id: 's30', icon: 'flame', title: 'Un mes de piano', text: 'Practicar 30 días seguidos.', key: 'streak', target: 30, unit: ['día', 'días'] },
+  { id: 'perfect', icon: 'check', title: 'Clase perfecta', text: 'Una sesión completa con todo al primer intento.', key: 'perfect', target: 1, unit: ['sesión perfecta', 'sesiones perfectas'] },
+  { id: 'known', icon: 'keys', title: 'Básicos firmes', text: 'Tus seis acordes básicos, firmes.', key: 'knownFirm', target: 6, unit: ['acorde', 'acordes'] },
+  { id: 'river', icon: 'target', title: 'Los acordes de River', text: 'F#m, D, A y E firmes: la progresión de River Flows in You.', key: 'riverFirm', target: 4, unit: ['acorde', 'acordes'] },
+  { id: 'chords15', icon: 'keys', title: 'Quince acordes', text: 'Quince acordes firmes.', key: 'chordsFirm', target: 15, unit: ['acorde', 'acordes'] },
+  { id: 'treble6', icon: 'staff', title: 'Media clave de sol', text: 'Seis notas firmes en clave de sol.', key: 'trebleFirm', target: 6, unit: ['nota', 'notas'] },
+  { id: 'treble12', icon: 'staff', title: 'Clave de sol completa', text: 'Las doce notas de la mano derecha, firmes.', key: 'trebleFirm', target: 12, unit: ['nota', 'notas'] },
+  { id: 'bass4', icon: 'staff', title: 'Mano izquierda despierta', text: 'Cuatro notas firmes en clave de fa.', key: 'bassFirm', target: 4, unit: ['nota', 'notas'] },
+  { id: 'bass8', icon: 'staff', title: 'Clave de fa completa', text: 'Las ocho notas de la mano izquierda, firmes.', key: 'bassFirm', target: 8, unit: ['nota', 'notas'] },
+  { id: 'theory10', icon: 'book', title: 'Teoría al día', text: 'Diez lecciones de teoría completadas.', key: 'lessons', target: 10, unit: ['lección', 'lecciones'] },
+  { id: 'theoryAll', icon: 'book', title: 'Toda la teoría', text: 'Todas las lecciones completadas.', key: 'lessons', target: TOTAL_LESSONS, unit: ['lección', 'lecciones'] },
+  { id: 'song1', icon: 'songs', title: 'Primera canción limpia', text: 'Tocar una melodía completa sin errores.', key: 'cleanSongs', target: 1, unit: ['canción', 'canciones'] },
+  { id: 'song5', icon: 'songs', title: 'Repertorio', text: 'Las cinco melodías sin errores.', key: 'cleanSongs', target: 5, unit: ['canción', 'canciones'] },
+  { id: 'hour', icon: 'bolt', title: 'Una hora de piano', text: 'Sumar 60 minutos de práctica.', key: 'minutes', target: 60, unit: ['minuto', 'minutos'] },
 ];

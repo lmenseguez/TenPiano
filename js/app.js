@@ -1,6 +1,7 @@
 import {
   NOTES, NOTE_BY_MIDI, MAX_BOX, LESSONS, TOTAL_LESSONS, TRACKS, SESSION_PARTS, GOALS,
-  CHORDS, CHORD_BY_ID, CHORD_LEVELS, chordText, BASS_NOTES, noteInfo, ALL_NOTES_COUNT,
+  CHORDS, CHORD_BY_ID, CHORD_LEVELS, chordText, BASS_NOTES, noteInfo, ALL_NOTES_COUNT, ACHIEVEMENTS,
+  FLUENT_MS, FLUENT_CHORD_MS,
 } from './data.js';
 import * as store from './store.js';
 import { buildSession, buildPlacement } from './session.js';
@@ -26,6 +27,33 @@ function progress() {
   return { chordsFirm, notesFirm, lessons };
 }
 
+// Lo que trae la próxima sesión: lección, acordes y notas nuevas.
+function upcoming() {
+  const lc = store.lessonsDone('chords');
+  const ls = store.lessonsDone('staff');
+  const track = lc < LESSONS.chords.length && (lc <= ls || ls >= LESSONS.staff.length) ? 'chords' : ls < LESSONS.staff.length ? 'staff' : null;
+  const items = [];
+  if (track) items.push({ icon: 'book', text: `Teoría: ${LESSONS[track][track === 'chords' ? lc : ls].title}` });
+  const chords = store.getState().chords && Object.keys(store.getState().chords).length ? store.nextNew('c') : [];
+  if (chords.length) items.push({ icon: 'keys', text: `${chords.length === 1 ? 'Acorde nuevo' : 'Acordes nuevos'}: ${chords.map((id) => CHORD_BY_ID.get(id).letters).join(' y ')}` });
+  const notes = store.nextNew('n');
+  if (notes.length) items.push({ icon: 'staff', text: `Mano derecha: ${notes.map((m) => NOTE_BY_MIDI.get(m).label).join(', ')}` });
+  const bass = store.nextNew('b');
+  if (bass.length) items.push({ icon: 'staff', text: `Mano izquierda: ${bass.map((m) => noteInfo('b', m).label).join(', ')}` });
+  if (items.length <= (track ? 1 : 0)) items.push({ icon: 'target', text: 'Afirmar lo que ya viste para desbloquear lo siguiente' });
+  return items;
+}
+
+// Preparación general para las piezas meta: promedio de acordes, notas y teoría.
+function readiness() {
+  const p = progress();
+  return Math.round(((p.chordsFirm / CHORDS.length + p.notesFirm / ALL_NOTES_COUNT + p.lessons / TOTAL_LESSONS) / 3) * 100);
+}
+
+function achievementBadge(a, { fresh = false } = {}) {
+  return `<div class="badge-card ${fresh ? 'badge-new' : ''}"><span class="tile-ico warm">${icon(a.icon)}</span><span class="grow"><strong>${a.title}</strong><br><span class="small muted">${a.text}</span></span></div>`;
+}
+
 // ---------- inicio ----------
 
 function renderHome() {
@@ -36,6 +64,8 @@ function renderHome() {
   const week = store.weekSummary();
   const p = progress();
   const pct = (v, t) => Math.round((v / t) * 100);
+  const ready = readiness();
+  const nextAch = store.nextAchievement();
 
   let status;
   if (st.doneToday) status = 'Hoy ya practicaste. Puedes repetir cuando quieras.';
@@ -56,11 +86,11 @@ function renderHome() {
     </header>
 
     <section class="hero">
-      <p class="eyebrow">${st.doneToday ? 'Sesión completada' : 'Sesión de hoy'}</p>
-      <h2>${st.doneToday ? 'Una vuelta más' : '10 minutos de piano'}</h2>
-      <div class="hero-steps">
-        <span>${icon('book')}Teoría</span><span>${icon('keys')}Acordes</span><span>${icon('staff')}Pentagrama</span>
-      </div>
+      <p class="eyebrow">${st.doneToday ? 'Hecho por hoy · mañana te espera' : 'Hoy te toca'}</p>
+      <h2>${st.doneToday ? `Vas por ${plural(st.streak, 'día', 'días')}` : '10 minutos de piano'}</h2>
+      <ul class="hero-list">
+        ${upcoming().slice(0, 3).map((u) => `<li>${icon(u.icon)}<span>${u.text}</span></li>`).join('')}
+      </ul>
       <button class="hero-go" id="start">${icon('play')}${st.doneToday ? 'Practicar otra vez' : 'Empezar'}</button>
     </section>
 
@@ -93,8 +123,16 @@ function renderHome() {
         <div>${ring(pct(p.notesFirm, ALL_NOTES_COUNT), `${p.notesFirm}/${ALL_NOTES_COUNT}`, { color: 'url(#g-violet)' })}<div class="small"><strong>Pentagrama</strong></div></div>
         <div>${ring(pct(p.lessons, TOTAL_LESSONS), `${p.lessons}/${TOTAL_LESSONS}`, { color: 'url(#g-warm)' })}<div class="small"><strong>Teoría</strong></div></div>
       </div>
-      <p class="eyebrow">Tu meta</p>
-      ${GOALS.map((g) => `<div class="goal-chip"><span class="tile-ico">${icon('target')}</span><span class="grow"><strong>${g.title}</strong><br><span class="small muted">${g.by}</span></span></div>`).join('')}
+    </section>
+
+    <section class="card stack">
+      <div class="row-between"><p class="eyebrow">Tu meta</p><span class="pill">${ready}% listo</span></div>
+      <div class="bar"><div style="width:${ready}%"></div></div>
+      ${GOALS.map((g) => {
+        const firm = g.chords ? g.chords.filter((id) => (store.stat('c', id)?.box || 0) >= 3).length : null;
+        return `<div class="goal-chip"><span class="tile-ico">${icon('target')}</span><span class="grow"><strong>${g.title}</strong><br><span class="small muted">${g.chords ? `Sus acordes (${g.chords.join(', ')}): ${firm} de ${g.chords.length} firmes` : g.by}</span></span></div>`;
+      }).join('')}
+      ${nextAch ? `<p class="small muted">${icon('star')} Próximo logro: <strong>${nextAch.title}</strong>. Te ${nextAch.left === 1 ? 'falta' : 'faltan'} ${plural(nextAch.left, nextAch.unit[0], nextAch.unit[1])}.</p>` : ''}
     </section>
     ${store.isMemoryOnly() ? '<p class="small muted center">Este navegador no permite guardar el progreso. Lo que practiques se perderá al cerrar.</p>' : ''}
   `, { tab: 'today' });
@@ -130,6 +168,7 @@ async function startSession({ minimal = false, placement = false } = {}) {
     firstTry: 0,
     lesson: null,
     missed: new Map(),
+    results: [], // { group, label, tip, firstTry, slow, up, firmed }
   };
   renderStep();
 }
@@ -151,6 +190,7 @@ function sessionShell(inner) {
 
 function renderStep() {
   mic.onNote = null;
+  mic.expect = null;
   if (session.index >= session.steps.length) return session.placement ? finishPlacement() : finishSession();
   const step = session.steps[session.index];
   switch (step.type) {
@@ -190,10 +230,13 @@ function listenRow(text = 'Escuchando tu teclado') {
   return `<div class="listen">${icon('mic')}<span>${text}</span><div class="meter" aria-hidden="true"><div id="meter"></div></div></div>`;
 }
 
-function bindMic(onNote) {
+// expect: dice qué nota espera el ejercicio, para que el micrófono no confunda
+// la cola de la tecla anterior con una respuesta.
+function bindMic(onNote, expect = null) {
   if (session.input !== 'mic') return;
   const meter = $('#meter');
   mic.onNote = onNote;
+  mic.expect = expect;
   mic.onLevel = ({ level }) => {
     if (meter && meter.isConnected) meter.style.width = meterPct(level) + '%';
   };
@@ -204,6 +247,35 @@ function tally(firstTry, label) {
   session.answered += 1;
   if (firstTry) session.firstTry += 1;
   else session.missed.set(label, (session.missed.get(label) || 0) + 1);
+}
+
+// Guarda una respuesta en el progreso y en el resumen de la sesión.
+// kind: 'c' acorde, 'n' nota en clave de sol, 'b' nota en clave de fa.
+function recordAnswer(kind, id, firstTry, ms) {
+  const before = store.stat(kind, id)?.box ?? 0;
+  store.record(kind, id, firstTry, ms);
+  const after = store.stat(kind, id)?.box ?? 0;
+  let label;
+  let tip;
+  if (kind === 'c') {
+    const c = CHORD_BY_ID.get(id);
+    label = c.letters;
+    tip = `Con nombres es ${c.latin}. Sus notas: ${c.names.join(', ')}.`;
+  } else {
+    const n = noteInfo(kind, id);
+    label = kind === 'b' ? `${n.label} en clave de fa` : n.label;
+    tip = n.where;
+  }
+  tally(firstTry, label);
+  session.results.push({
+    group: kind === 'c' ? 'Acordes' : kind === 'b' ? 'Mano izquierda' : 'Mano derecha',
+    label,
+    tip,
+    firstTry,
+    slow: firstTry && ms > (kind === 'c' ? FLUENT_CHORD_MS : FLUENT_MS),
+    up: after > before,
+    firmed: before < 3 && after >= 3,
+  });
 }
 
 // ---------- teoría ----------
@@ -380,8 +452,7 @@ function renderChordBuild(step) {
     }
     play.locked = true;
     const firstTry = play.attempts === 0 && !(play.hinted && !step.guided);
-    store.record('c', c.id, firstTry, performance.now() - play.shownAt);
-    tally(firstTry, c.letters);
+    recordAnswer('c', c.id, firstTry, performance.now() - play.shownAt);
     if (!firstTry && !step.retry && !step.guided) {
       const at = Math.min(session.steps.length, session.index + 4);
       session.steps.splice(at, 0, { type: 'chord-build', chord: c.id, retry: true });
@@ -396,7 +467,10 @@ function renderChordBuild(step) {
     play.attempts += 2;
     giveHint();
   };
-  bindMic(answer);
+  bindMic(answer, (midi) => {
+    const pc = ((midi % 12) + 12) % 12;
+    return c.pcs.includes(pc) && !play.found.has(pc);
+  });
 }
 
 // Ves las teclas y eliges qué acorde es.
@@ -440,8 +514,7 @@ function renderChordName(step) {
       if (b.dataset.id === c.id) {
         b.classList.add('option-right');
         $$('.option').forEach((o) => (o.disabled = true));
-        store.record('c', c.id, tries === 1, performance.now() - shownAt);
-        tally(tries === 1, c.letters);
+        recordAnswer('c', c.id, tries === 1, performance.now() - shownAt);
         fb.textContent = `Correcto. ${c.full}: ${c.names.join(', ')}.`;
         fb.className = 'feedback feedback-good';
         setTimeout(nextStep, 1100);
@@ -568,8 +641,7 @@ function renderPlay(step) {
     if (right) {
       const ms = performance.now() - play.shownAt;
       const firstTry = play.attempts === 0 && !(play.hinted && !step.guided);
-      store.record(kind, target, firstTry, ms);
-      tally(firstTry, info(target).label);
+      recordAnswer(kind, target, firstTry, ms);
 
       // Si costó, la misma nota vuelve un poco más adelante (una sola vez).
       if (!firstTry && !isPhrase && !step.retry) {
@@ -619,61 +691,101 @@ function renderPlay(step) {
       $('#toggle-keys').textContent = session.showKeys ? 'Ocultar teclado' : 'Tocar en pantalla';
     };
   }
-  bindMic(answer);
+  bindMic(answer, (midi) => {
+    const target = targets[Math.min(play.pos, targets.length - 1)];
+    if (midi === target) return true;
+    return !store.getState().settings.strictOctave && ((midi - target) % 12 + 12) % 12 === 0;
+  });
 }
 
 // ---------- cierre ----------
 
 function finishSession() {
   const seconds = Math.round((Date.now() - session.startedAt) / 1000);
+  const previous = store.getState().sessions.filter((x) => !x.minimal && x.cards).slice(-1)[0];
   const result = store.completeSession({
     cards: session.answered,
     firstTry: session.firstTry,
     seconds,
     minimal: session.minimal,
   });
+  const newBadges = store.checkAchievements();
   stopMic();
 
   const acc = session.answered ? Math.round((session.firstTry / session.answered) * 100) : 0;
-  const hard = [...session.missed.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4).map(([label]) => label);
-  const next = [];
-  const lc = store.lessonsDone('chords');
-  const ls = store.lessonsDone('staff');
-  const nextTrack = lc < LESSONS.chords.length && (lc <= ls || ls >= LESSONS.staff.length) ? 'chords' : ls < LESSONS.staff.length ? 'staff' : null;
-  if (nextTrack) next.push(`Teoría: ${LESSONS[nextTrack][nextTrack === 'chords' ? lc : ls].title}.`);
-  const newChords = store.nextNew('c');
-  if (newChords.length) next.push(`Acordes nuevos: ${newChords.map((id) => CHORD_BY_ID.get(id).letters).join(' y ')}.`);
-  const newNotes = store.nextNew('n');
-  if (newNotes.length) next.push(`Notas nuevas en clave de sol: ${newNotes.map((m) => NOTE_BY_MIDI.get(m).label).join(' y ')}.`);
-  const newBass = store.nextNew('b');
-  if (newBass.length) next.push(`Notas nuevas en clave de fa: ${newBass.map((m) => noteInfo('b', m).label).join(' y ')}.`);
-  if (!newChords.length && !newNotes.length && !newBass.length) next.push('Toca afirmar lo que ya viste antes de sumar algo nuevo.');
+  const res = session.results;
+  const uniq = (list) => [...new Set(list)];
+  const join = (list) => (list.length > 1 ? `${list.slice(0, -1).join(', ')} y ${list[list.length - 1]}` : list[0]);
+
+  // Lo que salió bien.
+  const groups = ['Acordes', 'Mano derecha', 'Mano izquierda'].map((g) => {
+    const items = res.filter((r) => r.group === g);
+    return { g, total: items.length, ok: items.filter((r) => r.firstTry).length };
+  }).filter((x) => x.total);
+  const missedLabels = new Set(res.filter((r) => !r.firstTry).map((r) => r.label));
+  const clean = uniq(res.filter((r) => r.firstTry && !r.slow && !missedLabels.has(r.label)).map((r) => r.label));
+  const firmed = uniq(res.filter((r) => r.firmed).map((r) => r.label));
+  const good = [];
+  const best = [...groups].sort((a, b) => b.ok / b.total - a.ok / a.total)[0];
+  if (best && best.ok / best.total >= 0.7) good.push(`Tu punto fuerte fue <strong>${best.g.toLowerCase()}</strong>: ${best.ok} de ${best.total} al primer intento.`);
+  if (clean.length) good.push(`Te ${clean.length === 1 ? 'salió' : 'salieron'} a la primera y sin dudar: ${join(clean.slice(0, 5))}.`);
+  if (firmed.length) good.push(`${firmed.length === 1 ? 'Quedó firme' : 'Quedaron firmes'}: ${join(firmed.slice(0, 5))}.`);
+  if (session.lesson) good.push(`Sumaste una lección de teoría: ${session.lesson}.`);
+  if (previous) {
+    const prevAcc = Math.round((previous.firstTry / previous.cards) * 100);
+    if (acc > prevAcc) good.push(`Mejoraste respecto de la sesión anterior: de ${prevAcc}% a ${acc}%.`);
+  }
+  if (!good.length) good.push('Completaste la sesión entera, que es lo que más cuenta.');
+
+  // En qué mejorar.
+  const tips = new Map();
+  for (const r of res) if (!r.firstTry && !tips.has(r.label)) tips.set(r.label, r.tip);
+  const worst = [...session.missed.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([label]) => label);
+  const slow = uniq(res.filter((r) => r.slow && !missedLabels.has(r.label)).map((r) => r.label)).slice(0, 3);
+  const improve = worst.map((label) => `<li><strong>${label}.</strong> ${tips.get(label) || ''}</li>`);
+  if (slow.length) improve.push(`<li><strong>Más rápido:</strong> acertaste ${join(slow)}, pero con demora. La meta es reconocerlas sin pensar.</li>`);
 
   const mins = Math.floor(seconds / 60);
   const secs = seconds % 60;
+  const next = upcoming();
+  const nextAch = store.nextAchievement();
   let extra = '';
   if (result.usedFreezes) extra += `<p class="small muted">Usaste ${plural(result.usedFreezes, 'día de perdón', 'días de perdón')} para mantener la racha.</p>`;
   if (result.earnedFreeze) extra += '<p class="small muted">Ganaste un día de perdón por tu constancia.</p>';
 
   show(`
-    <header class="center"><p class="eyebrow">Sesión terminada</p><h1 class="title grad-text">¡Bien hecho!</h1></header>
+    <header class="center"><p class="eyebrow">Sesión terminada</p><h1 class="title grad-text">${acc >= 90 ? '¡Excelente!' : acc >= 70 ? '¡Bien hecho!' : '¡Sesión cumplida!'}</h1></header>
     <section class="card stack center">
       ${ring(acc, `${acc}%`, { big: true })}
-      <p class="muted">al primer intento</p>
+      <p class="muted">al primer intento · ${session.answered} ejercicios · ${mins}:${String(secs).padStart(2, '0')}</p>
       <div><span class="pill pill-fire">${icon('flame')}${plural(result.streak, 'día seguido', 'días seguidos')}</span></div>
       ${extra}
     </section>
+
+    ${newBadges.length ? `<section class="card stack">
+      <p class="eyebrow">${newBadges.length === 1 ? 'Logro desbloqueado' : 'Logros desbloqueados'}</p>
+      ${newBadges.map((a) => achievementBadge(a, { fresh: true })).join('')}
+    </section>` : ''}
+
     <section class="card stack">
-      <div class="stats">
-        <div><div class="stat-num">${session.answered}</div><div class="small muted">ejercicios</div></div>
-        <div><div class="stat-num">${session.firstTry}</div><div class="small muted">aciertos directos</div></div>
-        <div><div class="stat-num">${mins}:${String(secs).padStart(2, '0')}</div><div class="small muted">tiempo</div></div>
-      </div>
-      ${session.lesson ? `<p>Teoría de hoy: ${session.lesson}.</p>` : ''}
-      ${hard.length ? `<p>Lo que más costó hoy: ${hard.join(', ')}. Va a volver más seguido.</p>` : '<p>Todo al primer intento.</p>'}
-      <p class="muted"><strong>Próxima sesión.</strong> ${next.join(' ')}</p>
+      <h2>${icon('check')} Lo que hiciste bien</h2>
+      <ul class="plain-list">${good.map((g) => `<li>${g}</li>`).join('')}</ul>
+      ${groups.length > 1 ? `<div class="stats">${groups.map((x) => `<div><div class="stat-num">${x.ok}/${x.total}</div><div class="small muted">${x.g}</div></div>`).join('')}</div>` : ''}
     </section>
-    <div class="spacer"></div>
+
+    <section class="card stack">
+      <h2>${icon('target')} Para mejorar</h2>
+      ${improve.length ? `<ul class="plain-list">${improve.join('')}</ul><p class="small muted">Estas van a aparecer más seguido en las próximas sesiones.</p>` : '<p>Nada que corregir hoy: todo salió al primer intento y a buen ritmo.</p>'}
+    </section>
+
+    <section class="hero">
+      <p class="eyebrow">Mañana te espera</p>
+      <h2>${plural(result.streak + 1, 'día seguido', 'días seguidos')}</h2>
+      <ul class="hero-list">${next.slice(0, 3).map((u) => `<li>${icon(u.icon)}<span>${u.text}</span></li>`).join('')}</ul>
+      ${nextAch ? `<p class="small"><strong>Próximo logro: ${nextAch.title}.</strong> Te ${nextAch.left === 1 ? 'falta' : 'faltan'} ${plural(nextAch.left, nextAch.unit[0], nextAch.unit[1])}.</p>` : ''}
+      <p class="small">Si mañana no hay tiempo, la sesión mínima de 2 minutos mantiene la racha.</p>
+    </section>
+
     <button class="btn btn-primary" id="home">Listo</button>
   `);
   celebrate();
@@ -797,6 +909,15 @@ function renderPath() {
     </section>
 
     <section class="card stack">
+      <div class="row-between"><h2>Logros</h2><span class="pill">${ACHIEVEMENTS.filter((a) => store.hasAchievement(a.id)).length} de ${ACHIEVEMENTS.length}</span></div>
+      <div class="badge-grid">
+        ${ACHIEVEMENTS.map((a) => `<div class="badge-tile ${store.hasAchievement(a.id) ? 'badge-on' : ''}" title="${a.text}">
+          <span class="tile-ico ${store.hasAchievement(a.id) ? 'warm' : 'off'}">${icon(a.icon)}</span>
+          <strong class="small">${a.title}</strong><span class="small muted">${a.text}</span></div>`).join('')}
+      </div>
+    </section>
+
+    <section class="card stack">
       <h2>Cómo avanzas</h2>
       <ul class="plain-list">
         <li>Cada nota y cada acorde tiene cinco niveles de dominio. Sube uno cuando aciertas al primer intento y sin demorarte.</li>
@@ -907,6 +1028,7 @@ function renderSettings(keepScroll = 0) {
       <button class="btn" id="restore">Restaurar una copia</button>
       <p class="feedback left" id="backup-msg" role="status" hidden></p>
     </section>
+    <button class="btn" id="welcome">Ver la bienvenida de TenPiano</button>
     <section class="card stack" id="reset-box">
       <p><strong>Reiniciar el progreso</strong></p>
       <p class="small muted">Borra lo aprendido y la racha de este dispositivo. Tus canciones se conservan.</p>
@@ -958,6 +1080,7 @@ function renderSettings(keepScroll = 0) {
       else say('Ese texto no es una copia válida de TenPiano.', 'feedback-bad');
     };
   };
+  $('#welcome').onclick = renderWelcome;
   $('#strict').onchange = (e) => store.setSetting('strictOctave', e.target.checked);
   $('#names').onchange = (e) => store.setSetting('showNames', e.target.checked);
   $('#reset').onclick = () => {
@@ -970,6 +1093,57 @@ function renderSettings(keepScroll = 0) {
       renderHome();
     };
   };
+}
+
+// ---------- bienvenida ----------
+
+const PITCH = [
+  ['bolt', '10 minutos al día', 'Sesiones cortas que la app arma por ti. Abres, tocas y listo.'],
+  ['keys', 'Acordes y partitura', 'Aprende a leer de las dos formas: cifrado (C, Dm, G7) y pentagrama, con las dos manos.'],
+  ['mic', 'Te escucha tocar', 'Usa tu propio teclado. La app oye cada nota y te corrige al instante.'],
+  ['flame', 'Hecha para que vuelvas', 'Racha, logros y un adelanto de lo que te espera mañana.'],
+  ['target', 'Con una meta real', 'Todo el plan apunta a las piezas que tú quieres tocar.'],
+];
+
+function renderWelcome() {
+  stopMic();
+  session = null;
+  show(`
+    <div class="spacer"></div>
+    <header class="welcome-top center">
+      <img class="welcome-logo" src="icons/icon-192.png" alt="" width="112" height="112">
+      <h1 class="welcome-name">Ten<span class="p">P</span>iano</h1>
+      <p class="welcome-tag">Aprende a leer y tocar el piano. <span class="grad-text">De verdad.</span></p>
+    </header>
+    <section class="stack">
+      ${PITCH.map(([ico, title, text]) => `<div class="list-row"><span class="tile-ico">${icon(ico)}</span><span class="grow"><strong>${title}</strong><br><span class="small muted">${text}</span></span></div>`).join('')}
+    </section>
+    <div class="spacer"></div>
+    <button class="btn btn-primary" id="go">Empezar ahora</button>
+  `);
+  $('#go').onclick = () => {
+    store.setWelcomed();
+    renderHome();
+  };
+}
+
+// Pantalla de apertura: el logo y una frase, un instante, cada vez que abres la app.
+function splash() {
+  const line = PITCH[new Date().getDate() % PITCH.length];
+  const el = document.createElement('div');
+  el.className = 'splash';
+  el.innerHTML = `
+    <img src="icons/icon-192.png" alt="" width="128" height="128">
+    <div class="splash-name">Ten<span class="p">P</span>iano</div>
+    <div class="splash-tag">${line[1]}</div>
+    <div class="splash-sub">${line[2]}</div>`;
+  document.body.appendChild(el);
+  const close = () => {
+    el.classList.add('splash-out');
+    setTimeout(() => el.remove(), 450);
+  };
+  el.onclick = close;
+  setTimeout(close, 2200);
 }
 
 // Suelta el micrófono si la app pasa a segundo plano fuera de una sesión.
@@ -989,4 +1163,6 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') {
 
 setNav({ today: renderHome, songs: () => renderSongs(renderHome), plan: renderPath, settings: () => renderSettings() });
 
-renderHome();
+splash();
+if (store.getState().welcomed) renderHome();
+else renderWelcome();
