@@ -6,7 +6,8 @@ import {
 import * as store from './store.js';
 import { buildSession, buildPlacement } from './session.js';
 import { drawStaff, drawKeyboard, drawExample, foldToKeyboard } from './staff.js';
-import { app, mic, show, $, $$, plural, heardLabel, pcName, meterPct, stopMic, startMic, BRAND, backHeader, icon, ring, celebrate, setNav } from './ui.js';
+import { app, mic, show, $, $$, plural, heardLabel, pcName, meterPct, stopMic, startMic, BRAND, backHeader, icon, ring, celebrate, setNav, keySound } from './ui.js';
+import { MicListener } from './audio.js';
 import { renderSongs } from './songs.js';
 import { pickRhythm, renderRhythmExercise, stopRhythm } from './rhythm.js';
 import { renderStory } from './story.js';
@@ -253,6 +254,40 @@ function bindMic(onNote, expect = null) {
   };
 }
 
+// Tecla tocada en el teclado en pantalla: suena (si el micrófono no está escuchando) y cuenta como respuesta.
+function press(midi, answer) {
+  if (session.input !== 'mic') keySound(midi);
+  answer(midi);
+}
+
+// Enlace para cambiar entre responder con el micrófono y con el teclado en pantalla.
+function inputLink() {
+  if (!MicListener.supported()) return '<span></span>';
+  return `<button class="link" id="switch-input">${session.input === 'mic' ? 'Tocar en pantalla' : 'Usar micrófono'}</button>`;
+}
+
+// Al pasar a la pantalla se apaga el micrófono; al volver, se enciende de nuevo.
+function bindInputLink() {
+  const link = $('#switch-input');
+  if (!link) return;
+  link.onclick = async () => {
+    if (session.input === 'mic') {
+      stopMic();
+      session.input = 'screen';
+      session.showKeys = true;
+    } else {
+      const problem = await startMic();
+      if (problem) {
+        session.micNote = problem;
+      } else {
+        session.input = 'mic';
+        session.showKeys = false;
+      }
+    }
+    renderStep();
+  };
+}
+
 // Anota un resultado en el resumen de la sesión.
 function tally(firstTry, label) {
   session.answered += 1;
@@ -409,9 +444,10 @@ function renderChordBuild(step) {
       <p class="small muted center">${byMic ? 'También puedes marcarlas en este teclado.' : 'En cualquier orden y altura.'}</p>
     </section>
     <div class="spacer"></div>
-    <div class="row-between"><span></span><button class="link" id="skip">No lo sé</button></div>
+    <div class="row-between">${inputLink()}<button class="link" id="skip">No lo sé</button></div>
   `);
   session.micNote = '';
+  bindInputLink();
   const fb = $('#feedback');
   const keysEl = $('#keys');
   const symbolEl = $('#symbol');
@@ -429,7 +465,7 @@ function renderChordBuild(step) {
     drawKeyboard(keysEl, {
       highlight: play.hinted ? c.midis.map(foldToKeyboard) : null,
       selected: play.keys,
-      onPress: (midi) => answer(midi),
+      onPress: (midi) => press(midi, answer),
     });
   };
   drawKeys();
@@ -475,6 +511,8 @@ function renderChordBuild(step) {
     }
     flash('symbol-good');
     setFb(`Correcto. ${c.letters} · ${c.latin}: ${c.names.join(', ')}.`, 'feedback-good');
+    // En pantalla, el acorde completo suena al final para que lo reconozcas de oído.
+    if (session.input !== 'mic') setTimeout(() => c.midis.forEach((m) => keySound(m, 0.24)), 320);
     setTimeout(nextStep, 1100);
   }
 
@@ -526,8 +564,9 @@ function renderChordInversion(step) {
       <div class="keys-box" id="keys"></div>
     </section>
     <div class="spacer"></div>
-    <div class="row-between"><span></span><button class="link" id="skip">No lo sé</button></div>
+    <div class="row-between">${inputLink()}<button class="link" id="skip">No lo sé</button></div>
   `);
+  bindInputLink();
   const fb = $('#feedback');
   const symbolEl = $('#symbol');
   const setFb = (text, cls) => {
@@ -540,7 +579,7 @@ function renderChordInversion(step) {
     symbolEl.classList.add(cls);
   };
   const drawKeys = () => {
-    drawKeyboard($('#keys'), { wide: true, highlight: play.hinted ? keys : null, selected: play.played, onPress: (midi) => answer(midi) });
+    drawKeyboard($('#keys'), { wide: true, highlight: play.hinted ? keys : null, selected: play.played, onPress: (midi) => press(midi, answer) });
   };
   drawKeys();
 
@@ -590,6 +629,7 @@ function renderChordInversion(step) {
     });
     flash('symbol-good');
     setFb(`Correcto. ${slash}: ${names.join(', ')}. Ahora tócalas juntas una vez.`, 'feedback-good');
+    if (session.input !== 'mic') setTimeout(() => play.played.forEach((m) => keySound(m, 0.24)), 320);
     setTimeout(nextStep, 1500);
   }
 
@@ -724,7 +764,7 @@ function renderPlay(step) {
     </section>
     <div class="spacer"></div>
     <div class="row-between">
-      ${session.input === 'mic' ? `<button class="link" id="toggle-keys">${session.showKeys ? 'Ocultar teclado' : 'Tocar en pantalla'}</button>` : '<span></span>'}
+      ${inputLink()}
       <button class="link" id="skip">No la sé</button>
     </div>
   `);
@@ -743,7 +783,7 @@ function renderPlay(step) {
       highlight: play.hinted ? targets[play.pos] : null,
       labels: play.hinted,
       base: KEY_BASE[kind],
-      onPress: (midi) => answer(midi),
+      onPress: (midi) => press(midi, answer),
     });
   };
   const setFb = (text, cls) => {
@@ -832,13 +872,7 @@ function renderPlay(step) {
     play.attempts += 2;
     giveHint();
   };
-  if ($('#toggle-keys')) {
-    $('#toggle-keys').onclick = () => {
-      session.showKeys = !session.showKeys;
-      keysEl.hidden = !session.showKeys && !play.hinted;
-      $('#toggle-keys').textContent = session.showKeys ? 'Ocultar teclado' : 'Tocar en pantalla';
-    };
-  }
+  bindInputLink();
   bindMic(answer, (midi) => {
     const target = targets[Math.min(play.pos, targets.length - 1)];
     if (midi === target) return true;

@@ -9,7 +9,7 @@ const hz = (midi) => A4 * Math.pow(2, (midi - 69) / 12);
 
 // Una nota con timbre parecido a un piano: varios armónicos que se apagan solos,
 // los agudos más rápido que los graves.
-function pianoNote(ac, dest, midi, when, velocity = 0.5, length = 2.4) {
+export function pianoNote(ac, dest, midi, when, velocity = 0.5, length = 2.4) {
   const f = hz(midi);
   const out = ac.createGain();
   out.gain.setValueAtTime(0.0001, when);

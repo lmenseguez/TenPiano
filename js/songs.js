@@ -2,7 +2,8 @@
 import { PROGRESSIONS, SONGS, NOTE_BY_MIDI, parseChord, chordText } from './data.js';
 import * as store from './store.js';
 import { drawKeyboard, drawMelodyLine, foldToKeyboard } from './staff.js';
-import { mic, show, $, $$, esc, heardLabel, meterPct, stopMic, startMic, backHeader, icon, ring, celebrate } from './ui.js';
+import { mic, show, $, $$, esc, heardLabel, meterPct, stopMic, startMic, backHeader, icon, ring, celebrate, keySound } from './ui.js';
+import { MicListener } from './audio.js';
 import { keepAwake } from './audio.js';
 import { scoresSectionHtml, bindScoresSection, leaveScore } from './scores.js';
 
@@ -333,7 +334,7 @@ async function renderMelody(song) {
   for (let i = 0; i < bars.length; i += 2) lines.push(bars.slice(i, i + 2));
   const lineOf = (pos) => lines.findIndex((ln) => ln.some((bar) => bar.some((n) => n.index === pos)));
 
-  const state = { pos: 0, errors: 0, started: Date.now(), showKeys: input === 'screen', hint: false };
+  const state = { pos: 0, errors: 0, started: Date.now(), input, hint: false };
   const chordLabel = (id) => {
     const c = parseChord(id);
     return settings.notation === 'names' ? c.latin : c.letters;
@@ -345,13 +346,13 @@ async function renderMelody(song) {
     <div class="paper" id="line-a" data-keep-mic></div>
     <div class="paper paper-next" id="line-b"></div>
     <p class="feedback" id="feedback" role="status"></p>
-    ${input === 'mic' ? '<div class="listen">' + icon('mic') + '<span>Escuchando tu teclado</span><div class="meter" aria-hidden="true"><div id="meter"></div></div></div>' : ''}
-    ${micNote ? `<p class="small muted center">${micNote}</p>` : ''}
-    <div class="keys-box" id="keys" ${state.showKeys ? '' : 'hidden'}></div>
+    <div class="listen" id="listen-row" ${input === 'mic' ? '' : 'hidden'}>${icon('mic')}<span>Escuchando tu teclado</span><div class="meter" aria-hidden="true"><div id="meter"></div></div></div>
+    <p class="small muted center" id="mic-note" ${micNote ? '' : 'hidden'}>${micNote}</p>
+    <div class="keys-box" id="keys" ${input === 'screen' ? '' : 'hidden'}></div>
     <p class="small muted">Mano derecha: la melodía. Cuando te salga, agrega con la izquierda el acorde escrito arriba, una vez por compás.</p>
     <div class="spacer"></div>
     <div class="row-between">
-      ${input === 'mic' ? '<button class="link" id="toggle-keys">Tocar en pantalla</button>' : '<span></span>'}
+      ${MicListener.supported() ? `<button class="link" id="switch-input">${input === 'mic' ? 'Tocar en pantalla' : 'Usar micrófono'}</button>` : '<span></span>'}
       <button class="link" id="hint">¿Qué nota es?</button>
     </div>
   `);
@@ -377,7 +378,10 @@ async function renderMelody(song) {
     drawKeyboard($('#keys'), {
       highlight: state.hint ? notes[state.pos].midi : null,
       labels: state.hint,
-      onPress: (midi) => answer(midi),
+      onPress: (midi) => {
+        if (state.input !== 'mic') keySound(midi); // suena solo si el micrófono no escucha
+        answer(midi);
+      },
     });
   };
 
@@ -435,14 +439,8 @@ async function renderMelody(song) {
     setFb(`Es ${NOTE_BY_MIDI.get(notes[state.pos].midi).label}.`, 'feedback-hint');
     paint();
   };
-  if ($('#toggle-keys')) {
-    $('#toggle-keys').onclick = () => {
-      state.showKeys = !state.showKeys;
-      $('#keys').hidden = !state.showKeys && !state.hint;
-      $('#toggle-keys').textContent = state.showKeys ? 'Ocultar teclado' : 'Tocar en pantalla';
-    };
-  }
-  if (input === 'mic') {
+  // Con el micrófono escuchando, se responde tocando el teclado real.
+  const listen = () => {
     mic.onNote = answer;
     mic.expect = (midi) => {
       const target = notes[Math.min(state.pos, notes.length - 1)].midi;
@@ -452,5 +450,33 @@ async function renderMelody(song) {
       const meter = $('#meter');
       if (meter) meter.style.width = meterPct(level) + '%';
     };
+  };
+  // Al pasar al teclado en pantalla se apaga el micrófono, y las teclas suenan.
+  const applyInput = () => {
+    $('#listen-row').hidden = state.input !== 'mic';
+    $('#keys').hidden = state.input === 'mic' && !state.hint;
+    $('#switch-input').textContent = state.input === 'mic' ? 'Tocar en pantalla' : 'Usar micrófono';
+  };
+  if ($('#switch-input')) {
+    $('#switch-input').onclick = async () => {
+      const note = $('#mic-note');
+      note.hidden = true;
+      if (state.input === 'mic') {
+        stopMic();
+        state.input = 'screen';
+      } else {
+        const problem = await startMic();
+        if (!$('#switch-input')) return stopMic();
+        if (problem) {
+          note.textContent = problem;
+          note.hidden = false;
+        } else {
+          state.input = 'mic';
+          listen();
+        }
+      }
+      applyInput();
+    };
   }
+  if (state.input === 'mic') listen();
 }

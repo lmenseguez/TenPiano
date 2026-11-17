@@ -1,6 +1,7 @@
 // Utilidades compartidas por las pantallas.
 import { MicListener, keepAwake } from './audio.js';
 import { NOTE_BY_MIDI, PC_NAMES } from './data.js';
+import { pianoNote } from './intro-sound.js';
 
 export const app = document.getElementById('app');
 export const mic = new MicListener();
@@ -170,4 +171,25 @@ export const BRAND = '<span class="brand"><img src="icons/logo-mark.png" alt="" 
 
 export function backHeader(title) {
   return `<header class="row"><button class="icon-btn" id="back" aria-label="Volver">${icon('back')}</button><h2 class="grow">${title}</h2></header>`;
+}
+
+// Sonido de una tecla del teclado en pantalla, para entrenar el oído.
+// Solo se usa cuando el micrófono no está escuchando: si no, la app se oiría a sí misma.
+let keyCtx = null;
+let keyOut = null;
+export function keySound(midi, velocity = 0.32) {
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    if (!keyCtx) {
+      keyCtx = new Ctx();
+      keyOut = keyCtx.createGain();
+      keyOut.gain.value = 0.7;
+      keyOut.connect(keyCtx.destination);
+    }
+    if (keyCtx.state !== 'running') keyCtx.resume().catch(() => {});
+    pianoNote(keyCtx, keyOut, midi, keyCtx.currentTime + 0.01, velocity, 1.6);
+  } catch (e) {
+    /* sin sonido: el ejercicio sigue igual */
+  }
 }
