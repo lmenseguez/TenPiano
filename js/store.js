@@ -42,7 +42,7 @@ function fresh() {
     achievements: {}, // id de logro -> día en que se consiguió
     welcomed: false,
     rhythm: { level: 1, passes: 0 }, // nivel de ritmo y aciertos seguidos en ese nivel
-    settings: { input: 'mic', strictOctave: true, showNames: false, notation: 'both', tempo: 70, click: true },
+    settings: { input: 'mic', strictOctave: true, showNames: false, notation: 'both', tempo: 70, click: true, introSound: true, welcome: true },
   };
 }
 

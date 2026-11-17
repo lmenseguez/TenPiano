@@ -10,6 +10,7 @@ import { app, mic, show, $, $$, plural, heardLabel, pcName, meterPct, stopMic, s
 import { renderSongs } from './songs.js';
 import { pickRhythm, renderRhythmExercise, stopRhythm } from './rhythm.js';
 import { renderStory } from './story.js';
+import { playIntro, stopIntro } from './intro-sound.js';
 
 let session = null;
 
@@ -150,6 +151,7 @@ function renderHome() {
 // ---------- sesión ----------
 
 async function startSession({ minimal = false, placement = false } = {}) {
+  stopIntro();
   let input = store.getState().settings.input;
   let micNote = '';
   if (input === 'mic') {
@@ -1092,6 +1094,7 @@ function renderPath() {
 // ---------- prueba de micrófono ----------
 
 async function renderMicTest() {
+  stopIntro();
   show(`
     ${backHeader('Prueba de micrófono')}
     <section class="card stack">
@@ -1158,6 +1161,14 @@ function renderSettings(keepScroll = 0) {
         <p class="small muted">Letras: C, Dm, G7. Nombres: Do, Rem, Sol7. Con "Ambas" la app alterna para que leas las dos.</p>
         ${seg('notation', [['both', 'Ambas'], ['letters', 'Letras'], ['names', 'Nombres']])}
       </div>
+      <label class="setting">
+        <span><strong>Melodía al abrir</strong><br><span class="small muted">Una frase corta de piano en la pantalla de apertura.</span></span>
+        <input type="checkbox" id="intro-sound" ${s.introSound !== false ? 'checked' : ''}>
+      </label>
+      <label class="setting">
+        <span><strong>Bienvenida al abrir</strong><br><span class="small muted">Muestra la presentación de TenPiano cada vez que abres la app.</span></span>
+        <input type="checkbox" id="welcome-on" ${s.welcome !== false ? 'checked' : ''}>
+      </label>
       <label class="setting">
         <span><strong>Exigir la altura exacta</strong><br><span class="small muted">En el pentagrama, el Do central y el Do agudo cuentan como notas distintas.</span></span>
         <input type="checkbox" id="strict" ${s.strictOctave ? 'checked' : ''}>
@@ -1227,6 +1238,8 @@ function renderSettings(keepScroll = 0) {
     };
   };
   $('#welcome').onclick = renderWelcome;
+  $('#intro-sound').onchange = (e) => store.setSetting('introSound', e.target.checked);
+  $('#welcome-on').onchange = (e) => store.setSetting('welcome', e.target.checked);
   $('#strict').onchange = (e) => store.setSetting('strictOctave', e.target.checked);
   $('#names').onchange = (e) => store.setSetting('showNames', e.target.checked);
   $('#reset').onclick = () => {
@@ -1273,23 +1286,50 @@ function renderWelcome() {
   };
 }
 
-// Pantalla de apertura: el logo y una frase, un instante, cada vez que abres la app.
-function splash() {
+// Pantalla de apertura: el logo, una frase y la melodía de TenPiano.
+// Los teléfonos no dejan sonar nada hasta que tocas la pantalla; por eso la
+// apertura espera un toque, y con ese toque arranca la melodía y sigue la app.
+function splash(next) {
+  const settings = store.getState().settings;
   const line = PITCH[new Date().getDate() % PITCH.length];
   const el = document.createElement('div');
   el.className = 'splash';
+  el.setAttribute('role', 'button');
+  el.setAttribute('tabindex', '0');
+  el.setAttribute('aria-label', 'TenPiano. Toca para entrar');
   el.innerHTML = `
     <img src="icons/icon-192.png" alt="" width="128" height="128">
     <div class="splash-name">Ten<span class="p">P</span>iano</div>
     <div class="splash-tag">${line[1]}</div>
-    <div class="splash-sub">${line[2]}</div>`;
+    <div class="splash-sub">${line[2]}</div>
+    <div class="splash-go">${icon('play')} Toca para entrar</div>`;
   document.body.appendChild(el);
+
+  let sounding = false;
+  let closed = false;
   const close = () => {
+    if (closed) return;
+    closed = true;
     el.classList.add('splash-out');
     setTimeout(() => el.remove(), 450);
+    next();
   };
-  el.onclick = close;
-  setTimeout(close, 2200);
+  const enter = async () => {
+    if (settings.introSound && !sounding) sounding = await playIntro();
+    close();
+  };
+  el.onclick = enter;
+  el.onkeydown = (e) => {
+    if (e.key === 'Enter' || e.key === ' ') enter();
+  };
+
+  // Donde el navegador lo permite sin toque, la melodía suena sola y la app entra a los pocos segundos.
+  if (settings.introSound) {
+    playIntro().then((ok) => {
+      sounding = ok;
+      if (ok) setTimeout(close, 3200);
+    });
+  }
 }
 
 // Suelta el micrófono si la app pasa a segundo plano fuera de una sesión.
@@ -1309,6 +1349,8 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') {
 
 setNav({ today: renderHome, songs: () => renderSongs(renderHome), plan: renderPath, settings: () => renderSettings() });
 
-splash();
-if (store.getState().welcomed) renderHome();
-else renderWelcome();
+// Detrás de la apertura queda lista la pantalla que sigue: la bienvenida (si está activada) o el inicio.
+const openWelcome = store.getState().settings.welcome !== false || !store.getState().welcomed;
+if (openWelcome) renderWelcome();
+else renderHome();
+splash(() => {});
