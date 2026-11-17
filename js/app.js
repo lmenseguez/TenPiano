@@ -8,6 +8,8 @@ import { buildSession, buildPlacement } from './session.js';
 import { drawStaff, drawKeyboard, drawExample, foldToKeyboard } from './staff.js';
 import { app, mic, show, $, $$, plural, heardLabel, pcName, meterPct, stopMic, startMic, BRAND, backHeader, icon, ring, celebrate, setNav } from './ui.js';
 import { renderSongs } from './songs.js';
+import { pickRhythm, renderRhythmExercise, stopRhythm } from './rhythm.js';
+import { renderStory } from './story.js';
 
 let session = null;
 
@@ -57,6 +59,7 @@ function achievementBadge(a, { fresh = false } = {}) {
 // ---------- inicio ----------
 
 function renderHome() {
+  stopRhythm();
   stopMic();
   session = null;
   const state = store.getState();
@@ -82,7 +85,7 @@ function renderHome() {
   show(`
     <header class="row-between">
       ${BRAND}
-      <span class="pill pill-fire" aria-label="Racha: ${plural(st.streak, 'día', 'días')}">${icon('flame')}${st.streak}</span>
+      <button class="pill pill-fire" id="streak" aria-label="Racha: ${plural(st.streak, 'día', 'días')}. Ver todo tu avance">${icon('flame')}${st.streak}</button>
     </header>
 
     <section class="hero">
@@ -137,6 +140,7 @@ function renderHome() {
     ${store.isMemoryOnly() ? '<p class="small muted center">Este navegador no permite guardar el progreso. Lo que practiques se perderá al cerrar.</p>' : ''}
   `, { tab: 'today' });
 
+  $('#streak').onclick = () => renderStory(renderHome);
   $('#start').onclick = () => startSession({ minimal: false });
   $('#start-min').onclick = () => startSession({ minimal: true });
   $('#mictest').onclick = renderMicTest;
@@ -189,8 +193,11 @@ function sessionShell(inner) {
 }
 
 function renderStep() {
+  stopRhythm();
   mic.onNote = null;
   mic.expect = null;
+  mic.chord = null;
+  mic.onChord = null;
   if (session.index >= session.steps.length) return session.placement ? finishPlacement() : finishSession();
   const step = session.steps[session.index];
   switch (step.type) {
@@ -201,6 +208,8 @@ function renderStep() {
     case 'chord-intro': return renderChordIntro(step);
     case 'chord-build': return renderChordBuild(step);
     case 'chord-name': return renderChordName(step);
+    case 'chord-inv': return renderChordInversion(step);
+    case 'rhythm': return renderRhythm();
     default: return renderPlay(step);
   }
 }
@@ -214,7 +223,7 @@ function renderSection(step) {
   sessionShell(`
     <div class="spacer"></div>
     <section class="stack center">
-      <div class="section-ico">${icon(step.title === 'Acordes' ? 'keys' : 'staff')}</div>
+      <div class="section-ico">${icon(step.title === 'Acordes' ? 'keys' : step.title === 'Ritmo' ? 'bolt' : 'staff')}</div>
       <p class="eyebrow">Ahora</p>
       <h1>${step.title}</h1>
       <p class="muted">${step.text}</p>
@@ -389,7 +398,7 @@ function renderChordBuild(step) {
 
   sessionShell(`
     <section class="stack">
-      <p class="prompt">${byMic ? 'Toca las notas de este acorde, de a una' : 'Marca las notas de este acorde'}</p>
+      <p class="prompt">${byMic ? 'Toca este acorde: las notas juntas o de a una' : 'Marca las notas de este acorde'}</p>
       <div class="symbol" id="symbol">${label}</div>
       <p class="feedback" id="feedback" role="status"></p>
       ${listenRow()}
@@ -450,6 +459,11 @@ function renderChordBuild(step) {
       setFb(`${c.names[i]}, bien. ${left === 1 ? 'Falta una nota.' : `Faltan ${left} notas.`}`, 'feedback-good');
       return;
     }
+    succeed();
+  }
+
+  function succeed() {
+    if (play.locked) return;
     play.locked = true;
     const firstTry = play.attempts === 0 && !(play.hinted && !step.guided);
     recordAnswer('c', c.id, firstTry, performance.now() - play.shownAt);
@@ -471,6 +485,118 @@ function renderChordBuild(step) {
     const pc = ((midi % 12) + 12) % 12;
     return c.pcs.includes(pc) && !play.found.has(pc);
   });
+  // Acorde tocado completo: el micrófono reconoce que suenan juntas todas sus notas.
+  if (byMic) {
+    mic.chord = c.pcs;
+    mic.onChord = () => {
+      if (play.locked) return;
+      play.keys = c.midis.map(foldToKeyboard);
+      drawKeys();
+      succeed();
+    };
+  }
+}
+
+// Inversión: el mismo acorde con otra nota abajo. Se toca de a una nota, de abajo hacia arriba.
+function renderChordInversion(step) {
+  const c = CHORD_BY_ID.get(step.chord);
+  const order = [0, 1, 2].map((k) => (k + step.inv) % 3); // índices de las notas, de abajo hacia arriba
+  const pcs = order.map((k) => c.pcs[k]);
+  const names = order.map((k) => c.names[k]);
+  const slash = `${c.letters}/${c.spell[order[0]]}`;
+  // Posición sugerida en el teclado, empezando en la octava del Do central.
+  const keys = [];
+  pcs.forEach((pc, k) => {
+    let m = k === 0 ? 60 + pc : keys[k - 1] + 1;
+    while (m % 12 !== pc) m += 1;
+    keys.push(m);
+  });
+  const play = { pos: 0, last: -1, played: [], attempts: 0, hinted: false, shownAt: performance.now(), locked: false };
+  const byMic = session.input === 'mic';
+
+  sessionShell(`
+    <section class="stack">
+      <p class="prompt">${step.inv === 1 ? 'Primera' : 'Segunda'} inversión: toca las notas de abajo hacia arriba</p>
+      <div class="symbol" id="symbol">${slash}</div>
+      <p class="small muted center">${c.full} con ${names[0]} como nota más grave${step.first ? '. La letra después de la barra indica qué nota va abajo.' : '.'}</p>
+      <p class="feedback" id="feedback" role="status"></p>
+      ${listenRow()}
+      <div class="keys-box" id="keys"></div>
+    </section>
+    <div class="spacer"></div>
+    <div class="row-between"><span></span><button class="link" id="skip">No lo sé</button></div>
+  `);
+  const fb = $('#feedback');
+  const symbolEl = $('#symbol');
+  const setFb = (text, cls) => {
+    fb.textContent = text;
+    fb.className = 'feedback ' + (cls || '');
+  };
+  const flash = (cls) => {
+    symbolEl.classList.remove('symbol-good', 'symbol-bad');
+    void symbolEl.offsetWidth;
+    symbolEl.classList.add(cls);
+  };
+  const drawKeys = () => {
+    drawKeyboard($('#keys'), { wide: true, highlight: play.hinted ? keys : null, selected: play.played, onPress: (midi) => answer(midi) });
+  };
+  drawKeys();
+
+  function giveHint() {
+    play.hinted = true;
+    play.pos = 0;
+    play.last = -1;
+    play.played = [];
+    drawKeys();
+    setFb(`De abajo hacia arriba: ${names.join(', ')}. Toca las teclas resaltadas, de izquierda a derecha.`, 'feedback-hint');
+  }
+
+  function miss(text) {
+    play.attempts += 1;
+    flash('symbol-bad');
+    if (play.attempts >= 2 && !play.hinted) giveHint();
+    else setFb(text, 'feedback-bad');
+  }
+
+  function answer(midi) {
+    if (play.locked) return;
+    const pc = ((midi % 12) + 12) % 12;
+    if (pc !== pcs[play.pos]) {
+      if (c.pcs.includes(pc)) miss(`${pcName(midi)} es del acorde, pero ahora va ${names[play.pos]}${play.pos === 0 ? ', que es la nota de abajo' : ''}.`);
+      else miss(`${pcName(midi)} no forma parte de este acorde.`);
+      return;
+    }
+    if (midi <= play.last) {
+      setFb(`Tiene que ser un ${names[play.pos]} más agudo que la nota anterior.`, 'feedback-bad');
+      return;
+    }
+    play.last = midi;
+    play.played.push(midi >= 60 && midi <= 83 ? midi : foldToKeyboard(midi));
+    play.pos += 1;
+    drawKeys();
+    if (play.pos < pcs.length) {
+      setFb(`${names[play.pos - 1]}, bien. Sigue ${names[play.pos]}, más arriba.`, 'feedback-good');
+      return;
+    }
+    play.locked = true;
+    const firstTry = play.attempts === 0 && !play.hinted;
+    tally(firstTry, slash);
+    session.results.push({
+      group: 'Acordes', label: slash, firstTry, up: false, firmed: false,
+      tip: `Es ${c.full} con ${names[0]} abajo: ${names.join(', ')}.`,
+      slow: firstTry && performance.now() - play.shownAt > FLUENT_CHORD_MS,
+    });
+    flash('symbol-good');
+    setFb(`Correcto. ${slash}: ${names.join(', ')}. Ahora tócalas juntas una vez.`, 'feedback-good');
+    setTimeout(nextStep, 1500);
+  }
+
+  $('#skip').onclick = () => {
+    if (play.locked) return;
+    play.attempts += 2;
+    giveHint();
+  };
+  bindMic(answer, (midi) => ((midi % 12) + 12) % 12 === pcs[Math.min(play.pos, pcs.length - 1)]);
 }
 
 // Ves las teclas y eliges qué acorde es.
@@ -526,6 +652,26 @@ function renderChordName(step) {
         fb.className = 'feedback feedback-bad';
       }
     };
+  });
+}
+
+// ---------- ritmo ----------
+
+function renderRhythm() {
+  const pattern = pickRhythm(store.rhythmLevel());
+  renderRhythmExercise({
+    pattern,
+    shell: sessionShell,
+    onDone: ({ firstTry }) => {
+      const leveled = store.recordRhythm(firstTry);
+      const label = `Ritmo (${pattern.title.toLowerCase()})`;
+      tally(firstTry, label);
+      session.results.push({
+        group: 'Ritmo', label, firstTry, slow: false, up: leveled, firmed: false,
+        tip: 'Cuenta en voz alta mientras marcas y espera el pulso antes de cada nota.',
+      });
+      nextStep();
+    },
   });
 }
 
@@ -718,7 +864,7 @@ function finishSession() {
   const join = (list) => (list.length > 1 ? `${list.slice(0, -1).join(', ')} y ${list[list.length - 1]}` : list[0]);
 
   // Lo que salió bien.
-  const groups = ['Acordes', 'Mano derecha', 'Mano izquierda'].map((g) => {
+  const groups = ['Acordes', 'Ritmo', 'Mano derecha', 'Mano izquierda'].map((g) => {
     const items = res.filter((r) => r.group === g);
     return { g, total: items.length, ok: items.filter((r) => r.firstTry).length };
   }).filter((x) => x.total);
@@ -883,7 +1029,7 @@ function renderPath() {
       <p class="eyebrow">Tu meta</p>
       <p>Leer y tocar con fluidez estas dos piezas. Esto es lo que exige cada una:</p>
       ${goals}
-      <p class="small muted">Sus partituras tienen derechos de autor y no están dentro de la app: se consiguen aparte. Sus acordes los puedes cargar en Canciones.</p>
+      <p class="small muted">Sus partituras tienen derechos de autor y no vienen dentro de la app. Si las consigues en formato MusicXML, puedes cargarlas en Canciones y practicarlas ahí; sus acordes también se cargan en Canciones.</p>
     </section>
 
     <section class="card stack">

@@ -1,0 +1,89 @@
+/* TenPiano · ejercicio de ritmo. Todas las clases llevan el prefijo rh-. */
+
+.rh-paper { padding: 6px 6px 2px; }
+.rh-paper svg { display: block; width: 100%; height: auto; margin: 0 auto; }
+.rh-paper-text { color: #04193a; font-weight: 800; text-align: center; padding: 22px 8px; letter-spacing: 0.12em; }
+
+/* Puntos del pulso: uno por tiempo del compás. */
+.rh-beats { display: flex; justify-content: center; align-items: center; gap: 14px; height: 20px; }
+.rh-beat {
+  width: 14px; height: 14px; border-radius: 50%;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  transition: transform 0.12s ease, background-color 0.12s ease, box-shadow 0.12s ease;
+}
+.rh-beat:first-child { width: 18px; height: 18px; }
+.rh-beat-on { background: var(--brand); border-color: transparent; transform: scale(1.25); box-shadow: 0 0 16px rgba(1, 219, 184, 0.9); }
+.rh[data-state="countin"] .rh-beat-on { background: var(--warm-2); box-shadow: 0 0 16px rgba(255, 211, 92, 0.9); }
+.rh[data-state="listening"] .rh-beat-on { background: var(--brand-2); box-shadow: 0 0 16px rgba(56, 198, 255, 0.9); }
+
+.rh-feedback { min-height: 2.9em; }
+
+/* Zona grande para marcar el ritmo. */
+.rh-pad {
+  position: relative;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  width: 100%; min-height: 150px;
+  padding: 12px;
+  border-radius: var(--radius);
+  border: 2px dashed var(--line);
+  background: var(--surface);
+  color: var(--muted);
+  font-weight: 800;
+  touch-action: none;
+  user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+  overflow: hidden;
+  transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+.rh-pad:focus-visible { outline: 3px solid var(--brand-2); outline-offset: 3px; }
+.rh-pad-label { font-size: 1.35rem; letter-spacing: 0.01em; }
+.rh-pad-count { font-size: 4.2rem; line-height: 1; font-variant-numeric: tabular-nums; }
+.rh-pad-count:empty { display: none; }
+.rh-pad-sub { font-size: 0.86rem; font-weight: 600; }
+.rh-pad-sub:empty { display: none; }
+
+.rh[data-state="countin"] .rh-pad { border-style: solid; border-color: var(--warm-2); color: var(--warm-2); }
+.rh[data-state="countin"] .rh-pad-label { font-size: 0.95rem; color: var(--muted); }
+.rh-count-pop { animation: rh-count 0.28s cubic-bezier(0.2, 0.9, 0.3, 1.3); }
+
+.rh[data-state="playing"] .rh-pad {
+  border-style: solid; border-color: var(--brand);
+  background: linear-gradient(135deg, rgba(1, 219, 184, 0.22), rgba(56, 198, 255, 0.2));
+  color: var(--ink);
+  box-shadow: 0 14px 40px -14px rgba(1, 219, 184, 0.7);
+}
+.rh[data-state="playing"] .rh-pad-label { font-size: 1.6rem; }
+
+.rh[data-state="result"] .rh-pad { min-height: 110px; border-style: solid; }
+.rh[data-state="result"] .rh-pad-count { font-size: 2.6rem; color: var(--ink); }
+.rh[data-state="result"] .rh-pad-label { font-size: 0.95rem; }
+.rh-pad.rh-pad-good { border-color: var(--good); }
+.rh-pad.rh-pad-good .rh-pad-count { color: var(--good); }
+.rh-pad.rh-pad-bad { border-color: var(--bad); }
+
+/* Respuesta inmediata a cada toque. */
+.rh-pad::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit;
+  background: radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.55), rgba(1, 219, 184, 0.35) 55%, transparent 75%);
+  opacity: 0; pointer-events: none;
+}
+.rh-pad-hit { animation: rh-press 0.16s ease-out; }
+.rh-pad-hit::after { animation: rh-flash 0.22s ease-out; }
+.rh-pad-hit-flat { background: rgba(1, 219, 184, 0.4) !important; }
+
+.rh-actions { display: flex; gap: 12px; }
+.rh-actions .btn { flex: 1 1 0; padding-left: 10px; padding-right: 10px; }
+.rh-actions .btn-primary { flex-grow: 1.7; white-space: nowrap; }
+.rh-actions .btn:disabled { opacity: 0.4; pointer-events: none; box-shadow: none; }
+.rh-more { display: flex; justify-content: center; min-height: 48px; }
+.rh-more .link { min-height: 48px; padding: 12px 18px; }
+
+@keyframes rh-press { 0% { transform: scale(0.975); } 100% { transform: scale(1); } }
+@keyframes rh-flash { 0% { opacity: 0.9; } 100% { opacity: 0; } }
+@keyframes rh-count { 0% { transform: scale(0.6); opacity: 0.3; } 100% { transform: scale(1); opacity: 1; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .rh-beat, .rh-pad { transition: none; }
+  .rh-beat-on { transform: none; }
+  .rh-pad-hit, .rh-pad-hit::after, .rh-count-pop { animation: none; }
+}

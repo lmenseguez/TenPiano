@@ -147,6 +147,8 @@ export function meterPct(level) {
 export function stopMic() {
   mic.onNote = null;
   mic.expect = null;
+  mic.chord = null;
+  mic.onChord = null;
   mic.onLevel = null;
   mic.stop();
   keepAwake(false);

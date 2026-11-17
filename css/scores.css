@@ -1,0 +1,89 @@
+/* TenPiano · partituras propias (clases con prefijo sc-) */
+
+/* Lista y carga de archivos */
+.sc-item { display: flex; align-items: center; gap: 8px; }
+.sc-item .list-row { flex: 1; min-width: 0; }
+.sc-item .list-row strong, .sc-item .list-row .small { overflow-wrap: anywhere; }
+.sc-del { color: var(--muted); }
+.sc-confirm {
+  flex: 1; display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+  min-height: 64px; padding: 10px 14px; border-radius: 18px;
+  border: 1px solid rgba(255, 122, 122, 0.45); background: rgba(255, 122, 122, 0.08);
+}
+.sc-confirm .grow { flex: 1 1 100%; overflow-wrap: anywhere; }
+.sc-confirm .sc-mini { flex: 1; }
+
+.sc-mini {
+  min-height: 44px; padding: 8px 14px; border-radius: 14px; flex: none;
+  border: 1px solid var(--line); background: var(--surface-2);
+  font-weight: 700; font-size: 0.9rem;
+}
+.sc-mini:focus-visible, .sc-import:focus-within { outline: 3px solid var(--brand-2); outline-offset: 3px; }
+.sc-mini-bad { color: var(--bad); border-color: rgba(255, 122, 122, 0.5); }
+.sc-mini:disabled, .sc-bar .btn:disabled, .sc-bar .link:disabled, .sc-status .icon-btn:disabled { opacity: 0.5; cursor: default; }
+
+.sc-import { position: relative; display: flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer; }
+.sc-import input { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; clip-path: inset(50%); }
+.sc-busy { opacity: 0.6; pointer-events: none; }
+.sc-msg { font-weight: 700; font-size: 0.95rem; }
+.sc-msg:empty { display: none; }
+.sc-warn { color: var(--warm); font-weight: 600; }
+.sc-offscreen { position: absolute; left: -10000px; top: 0; width: 600px; height: 1px; overflow: hidden; visibility: hidden; }
+
+/* Espera */
+.sc-wait { padding: 32px 18px; align-items: center; }
+.sc-spin {
+  width: 34px; height: 34px; border-radius: 50%;
+  border: 4px solid rgba(255, 255, 255, 0.14); border-top-color: var(--brand);
+  animation: sc-turn 0.9s linear infinite;
+}
+@keyframes sc-turn { to { transform: rotate(360deg); } }
+
+/* Controles de práctica */
+.sc-controls { display: flex; flex-direction: column; gap: 10px; }
+.sc-range { display: flex; align-items: center; gap: 8px; font-size: 0.92rem; font-weight: 700; color: var(--muted); }
+.sc-range input {
+  width: 58px; min-height: 44px; padding: 8px 4px; text-align: center;
+  font: inherit; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums;
+  background: rgba(0, 0, 0, 0.25); border: 1px solid var(--line); border-radius: 14px;
+  -moz-appearance: textfield; appearance: textfield;
+}
+.sc-range input::-webkit-outer-spin-button, .sc-range input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.sc-range input:focus-visible { outline: 3px solid var(--brand-2); outline-offset: 1px; }
+.sc-range .sc-mini { margin-left: auto; }
+
+.sc-status { display: flex; align-items: center; gap: 8px; }
+.sc-status p { line-height: 1.35; }
+#sc-where { color: var(--ink); font-weight: 700; }
+
+/* Partitura */
+.sc-paper { padding: 6px 4px; overflow-x: auto; min-height: 120px; transition: opacity 0.15s ease; }
+.sc-paper.sc-working { opacity: 0.45; }
+#sc-osmd { position: relative; }
+#sc-osmd svg { display: block; max-width: none; }
+
+/* Barra inferior: siempre a la vista mientras la partitura se desplaza */
+.sc-bar {
+  position: sticky; bottom: 0; z-index: 10; margin: auto -18px 0;
+  padding: 10px 18px calc(env(safe-area-inset-bottom) + 12px);
+  display: flex; flex-direction: column; gap: 8px;
+  background: rgba(5, 16, 40, 0.9);
+  border-top: 1px solid var(--line);
+  backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+}
+#app:has(> .sc-bar) { padding-bottom: 0; }
+.sc-feedback { min-height: 1.45em; }
+.sc-actions { display: flex; align-items: center; gap: 12px; }
+.sc-actions .link { min-height: 44px; flex: none; }
+.sc-actions .btn { flex: 1; min-height: 52px; padding: 10px 18px; }
+
+/* Pantalla baja (teléfono acostado): la barra ocupa lo mínimo */
+@media (max-height: 520px) {
+  .sc-bar { padding-top: 6px; gap: 4px; }
+  .sc-feedback:empty { display: none; }
+  .sc-actions .btn { min-height: 44px; padding: 8px 18px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sc-spin { animation: none; }
+}

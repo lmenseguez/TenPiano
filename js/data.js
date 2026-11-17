@@ -1,3 +1,5 @@
+import { RHYTHM_LESSONS } from './rhythm-lessons.js';
+
 // Plan de estudio: notas en clave de sol, mano derecha.
 // El orden parte de los acordes que ya conoces (Do, Fa, Sol, La menor).
 
@@ -162,6 +164,7 @@ export function parseChord(symbol) {
   const rootPc = (LETTER_PC[li] + ACC_SHIFT[acc] + 12) % 12;
   const quality = QUALITIES[q];
   const names = [];
+  const spell = []; // cada nota con letra: E, G#, Bb
   const pcs = [];
   quality.intervals.forEach((iv, i) => {
     const idx = (li + i * 2) % 7;
@@ -169,6 +172,7 @@ export function parseChord(symbol) {
     const diff = (pc - LETTER_PC[idx] + 12) % 12;
     const a = diff === 0 ? '' : diff === 1 ? '♯' : diff === 11 ? '♭' : diff === 2 ? '♯♯' : '♭♭';
     names.push(LATIN[idx] + a);
+    spell.push(LETTERS[idx] + a);
     pcs.push(pc);
   });
   // Posición fundamental empezando en la octava del Do central.
@@ -181,6 +185,7 @@ export function parseChord(symbol) {
     pcs,
     midis,
     names,
+    spell,
     letters: letter + accSign(acc) + q,
     latin: LATIN[li] + accSign(acc) + q,
     full: `${LATIN[li]}${ACC_WORD[acc]} ${quality.word}`,
@@ -212,7 +217,8 @@ export function chordText(chord, notation) {
 
 export const SESSION_PARTS = [
   { title: 'Teoría', time: '2 min', text: 'Una lección corta, alternando acordes y pentagrama, con una pregunta para comprobar que quedó clara.' },
-  { title: 'Acordes', time: '4 min', text: 'Lees un símbolo (Dm, Sol7) y armas el acorde, o ves las teclas y dices qué acorde es.' },
+  { title: 'Acordes', time: '4 min', text: 'Lees un símbolo (Dm, Sol7) y tocas el acorde, o ves las teclas y dices cuál es. Los que ya están firmes aparecen también en inversiones.' },
+  { title: 'Ritmo', time: '1 min', text: 'Marcas un ritmo escrito siguiendo el pulso, y la app mide qué tan a tiempo vas.' },
   { title: 'Pentagrama', time: '4 min', text: 'Lees notas y frases en clave de sol con la mano derecha, y en clave de fa con la izquierda.' },
 ];
 
@@ -227,7 +233,8 @@ export const TRACKS = [
       { title: 'Acordes con teclas negras', ready: true, topics: ['Sostenidos y bemoles: F#m, Bb', 'D, A, E, F#m', 'Bm, Gm, Cm, Bb, Eb'] },
       { title: 'Séptimas', ready: true, topics: ['G7, C7, D7, A7, E7', 'Am7, Dm7, Em7', 'Cmaj7, Fmaj7'] },
       { title: 'Progresiones y canciones en cifrado', ready: true, topics: ['Progresiones típicas con pulso', 'Tus propias canciones: cargas los acordes y tocas'] },
-      { title: 'Inversiones y cambios rápidos', ready: false, topics: ['Ejercicios de inversiones', 'Cambiar de acorde moviendo poco la mano'] },
+      { title: 'Inversiones', ready: true, topics: ['Primera y segunda inversión de los acordes que ya tienes firmes', 'El cifrado con barra: C/E es Do mayor con Mi abajo'] },
+      { title: 'Cambios rápidos entre acordes', ready: false, topics: ['Elegir la inversión más cercana', 'Cambiar moviendo poco la mano'] },
     ],
   },
   {
@@ -236,8 +243,8 @@ export const TRACKS = [
     goal: 'Leer una partitura sencilla y tocarla, con la melodía en la mano derecha y los acordes en la izquierda.',
     units: [
       { title: 'Notas en clave de sol', ready: true, topics: ['El pentagrama y la clave de sol', 'Las 12 notas, del Do central al Sol agudo', 'Pasos, saltos y octavas'] },
-      { title: 'Canciones en partitura', ready: true, topics: ['Melodías conocidas de dominio público', 'Acordes escritos sobre la melodía', 'Negras, blancas y corcheas'] },
-      { title: 'El ritmo', ready: false, topics: ['Pulso y compás: 4/4 y 3/4', 'Corcheas y semicorcheas', 'Contar mientras tocas'] },
+      { title: 'Canciones en partitura', ready: true, topics: ['Melodías conocidas de dominio público', 'Acordes escritos sobre la melodía', 'Tus propias partituras en MusicXML, por mano y por compases'] },
+      { title: 'El ritmo', ready: true, topics: ['Pulso y compás: 4/4 y 3/4', 'Negras, corcheas, puntillo y semicorcheas', 'Marcar un ritmo escrito sobre el pulso'] },
       { title: 'La clave de fa', ready: true, topics: ['Las 8 notas de la mano izquierda, del Do grave al Do central', 'El pentagrama doble del piano'] },
       { title: 'Patrones de mano izquierda', ready: false, topics: ['Arpegios', 'Patrón de vals'] },
       { title: 'Sostenidos y bemoles en el pentagrama', ready: false, topics: ['Alteraciones', 'Armaduras: tres sostenidos, tonalidades menores'] },
@@ -257,7 +264,7 @@ export const GOALS = [
       { text: 'Leer las notas en clave de fa', track: 'staff', ready: true },
       { text: 'Mano izquierda en arpegios', track: 'staff', ready: false },
       { text: 'Armadura de tres sostenidos', track: 'staff', ready: false },
-      { text: 'Corcheas y semicorcheas', track: 'staff', ready: false },
+      { text: 'Corcheas y semicorcheas', track: 'staff', ready: true },
       { text: 'Notas agudas por encima del pentagrama', track: 'staff', ready: false },
     ],
   },
@@ -266,7 +273,7 @@ export const GOALS = [
     needs: [
       { text: 'Acordes menores y séptimas', track: 'chords', ready: true },
       { text: 'Leer las notas en clave de sol', track: 'staff', ready: true },
-      { text: 'Compás de 3/4 y ritmo de vals', track: 'staff', ready: false },
+      { text: 'Compás de 3/4', track: 'staff', ready: true },
       { text: 'Leer las notas en clave de fa', track: 'staff', ready: true },
       { text: 'Mano izquierda con patrón de vals', track: 'staff', ready: false },
       { text: 'Tonalidad menor con alteraciones', track: 'staff', ready: false },
@@ -588,8 +595,9 @@ const STAFF_LESSONS = [
   },
 ];
 
-export const LESSONS = { chords: CHORD_LESSONS, staff: STAFF_LESSONS };
-export const TOTAL_LESSONS = CHORD_LESSONS.length + STAFF_LESSONS.length;
+// Las lecciones de ritmo siguen a las de lectura de notas, dentro del camino de pentagrama.
+export const LESSONS = { chords: CHORD_LESSONS, staff: [...STAFF_LESSONS, ...RHYTHM_LESSONS] };
+export const TOTAL_LESSONS = LESSONS.chords.length + LESSONS.staff.length;
 
 // ---------- Canciones ----------
 

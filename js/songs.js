@@ -4,11 +4,13 @@ import * as store from './store.js';
 import { drawKeyboard, drawMelodyLine, foldToKeyboard } from './staff.js';
 import { mic, show, $, $$, esc, heardLabel, meterPct, stopMic, startMic, backHeader, icon, ring, celebrate } from './ui.js';
 import { keepAwake } from './audio.js';
+import { scoresSectionHtml, bindScoresSection, leaveScore } from './scores.js';
 
 let goHome = () => {};
 let stopPlayer = null;
 
 function leave() {
+  leaveScore();
   if (stopPlayer) stopPlayer();
   stopPlayer = null;
   stopMic();
@@ -67,6 +69,8 @@ export function renderSongs(home) {
       </ul>
     </section>
 
+    <section class="stack" id="scores-box"></section>
+
     <section class="stack">
       <p class="eyebrow">En partitura · Melodías con acordes</p>
       <ul class="list">
@@ -77,6 +81,13 @@ export function renderSongs(home) {
       <p class="small muted">Lees la melodía y la app comprueba cada nota; los acordes van escritos arriba. Son obras de dominio público: las canciones con derechos de autor no pueden incluirse en partitura.</p>
     </section>
   `, { tab: 'songs' });
+  // Tus partituras (MusicXML): el bloque se arma aparte porque lee del almacenamiento del dispositivo.
+  scoresSectionHtml().then((html) => {
+    const box = $('#scores-box');
+    if (!box) return;
+    box.innerHTML = html;
+    bindScoresSection(() => renderSongs());
+  }).catch(() => {});
   $('#add').onclick = () => renderEditor(null);
   $$('[data-prog]').forEach((b) => {
     b.onclick = () => {
@@ -378,7 +389,7 @@ async function renderMelody(song) {
     show(`
       ${backHeader(esc(song.title))}
       <section class="card stack center">
-        ${ring(Math.round((Math.max(0, notes.length - state.errors) / notes.length) * 100), icon('check'), { big: true })}
+        ${ring(Math.round((Math.max(0, notes.length - state.errors) / notes.length) * 100), `${Math.round((Math.max(0, notes.length - state.errors) / notes.length) * 100)}%`, { big: true })}
         <h2>Canción completa</h2>
         <div class="stats">
           <div><div class="stat-num">${notes.length}</div><div class="small muted">notas</div></div>

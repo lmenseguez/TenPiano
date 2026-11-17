@@ -41,6 +41,7 @@ function fresh() {
     songsDone: {}, // id de melodía -> menor cantidad de errores
     achievements: {}, // id de logro -> día en que se consiguió
     welcomed: false,
+    rhythm: { level: 1, passes: 0 }, // nivel de ritmo y aciertos seguidos en ese nivel
     settings: { input: 'mic', strictOctave: true, showNames: false, notation: 'both', tempo: 70, click: true },
   };
 }
@@ -332,4 +333,24 @@ export function nextAchievement() {
 export function setWelcomed() {
   state.welcomed = true;
   save();
+}
+
+// ---- Ritmo ----
+
+export const rhythmLevel = () => (state.rhythm && state.rhythm.level) || 1;
+
+// Cuatro ritmos acertados al primer intento suben de nivel (hasta el 5).
+export function recordRhythm(firstTry) {
+  if (!state.rhythm) state.rhythm = { level: 1, passes: 0 };
+  if (firstTry) {
+    state.rhythm.passes += 1;
+    if (state.rhythm.passes >= 4 && state.rhythm.level < 5) {
+      state.rhythm.level += 1;
+      state.rhythm.passes = 0;
+      save();
+      return true;
+    }
+  }
+  save();
+  return false;
 }

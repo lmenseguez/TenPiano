@@ -16,7 +16,9 @@ El progreso se guarda en el dispositivo. No hay servidor ni cuentas.
 - `js/data.js`: contenido (notas, acordes, lecciones, plan, canciones).
 - `js/pitch.js`: detección de tono (algoritmo YIN).
 - `js/app.js`: inicio, sesión, plan y ajustes. `js/songs.js`: sección Canciones.
+- `js/rhythm.js`: ejercicio de ritmo con pulso. `js/scores.js`: partituras propias en MusicXML. `js/story.js`: resumen animado del avance.
 - `vendor/vexflow.js`: [VexFlow](https://www.vexflow.com/) para dibujar el pentagrama (licencia MIT).
+- `vendor/osmd.min.js`: [OpenSheetMusicDisplay](https://opensheetmusicdisplay.org/) para mostrar partituras MusicXML (licencia BSD de 3 cláusulas).
 
 ## Probar en local
 

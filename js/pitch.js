@@ -216,3 +216,65 @@ export class NoiseFloor {
     return Math.min(this.max, Math.max(this.min, floor * this.factor));
   }
 }
+
+// Verifica si en el espectro suenan a la vez todas las notas de un acorde esperado.
+//
+// Mira solo la franja de Si3 a Fa#5: ahí cada pico es la nota tocada o su octava
+// (mismo nombre), sea que el acorde se toque en esa zona o una octava más abajo.
+// No identifica acordes desconocidos: comprueba el que el ejercicio espera.
+export class ChordChecker {
+  constructor(sampleRate, fftSize) {
+    this.binHz = sampleRate / fftSize;
+    this.lo = 59; // Si3
+    this.hi = 78; // Fa#5
+  }
+
+  // Nivel más alto cerca de una frecuencia (±35 cents aprox.).
+  levelAt(spectrum, f) {
+    const center = f / this.binHz;
+    const half = Math.max(1, (f * 0.02) / this.binHz);
+    let best = -Infinity;
+    for (let b = Math.floor(center - half); b <= Math.ceil(center + half); b++) {
+      if (spectrum[b] > best) best = spectrum[b];
+    }
+    return best;
+  }
+
+  // ¿Este pico es solo un armónico de una nota más grave, y no una tecla tocada?
+  // Pasa con el 3.er y el 5.º armónico: un Do grave solo hace sonar un Sol y un Mi agudos.
+  isOvertone(spectrum, f, level) {
+    const ownOctave = this.levelAt(spectrum, f / 2) >= level - 10;
+    if (ownOctave) return false;
+    for (const k of [3, 5]) {
+      if (f / k >= 100 && this.levelAt(spectrum, f / k) >= level + 3) return true;
+    }
+    return false;
+  }
+
+  // spectrum: Float32Array en decibelios (AnalyserNode.getFloatFrequencyData).
+  // Devuelve { present: Set de clases de nota del acorde que suenan, matched }.
+  check(spectrum, pcs) {
+    const byPc = new Map(); // clase de nota -> [{ f, level }]
+    const all = [];
+    let top = -Infinity;
+    for (let midi = this.lo; midi <= this.hi; midi++) {
+      const f = midiToFreq(midi);
+      const level = this.levelAt(spectrum, f);
+      all.push(level);
+      const pc = midi % 12;
+      if (!byPc.has(pc)) byPc.set(pc, []);
+      byPc.get(pc).push({ f, level });
+      if (level > top) top = level;
+    }
+    const sorted = [...all].sort((a, b) => a - b);
+    const floor = sorted[Math.floor(sorted.length * 0.35)]; // nivel típico donde no suena nada
+    const present = new Set();
+    if (top - floor >= 22) {
+      for (const pc of pcs) {
+        const found = (byPc.get(pc) || []).some((x) => x.level >= top - 20 && x.level >= floor + 16 && !this.isOvertone(spectrum, x.f, x.level));
+        if (found) present.add(pc);
+      }
+    }
+    return { present, matched: present.size === pcs.length };
+  }
+}

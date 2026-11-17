@@ -160,6 +160,8 @@ button { font: inherit; color: inherit; cursor: pointer; -webkit-tap-highlight-c
   font-weight: 800;
   font-variant-numeric: tabular-nums;
 }
+.pill { font-family: inherit; font-size: inherit; color: inherit; }
+button.pill { cursor: pointer; min-height: 44px; }
 .pill-fire { background: linear-gradient(135deg, rgba(255, 122, 61, 0.28), rgba(255, 211, 92, 0.18)); border-color: rgba(255, 170, 80, 0.4); }
 .pill-fire .ico { color: var(--warm); animation: flicker 1.6s ease-in-out infinite; transform-origin: 50% 90%; }
 @keyframes flicker { 0%, 100% { transform: scale(1) rotate(-2deg); } 50% { transform: scale(1.14) rotate(3deg); } }

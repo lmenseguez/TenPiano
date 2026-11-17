@@ -1,5 +1,5 @@
 // Arma la sesión del día: teoría, acordes y pentagrama.
-import { LESSONS } from './data.js';
+import { LESSONS, CHORD_BY_ID } from './data.js';
 import * as store from './store.js';
 
 function weightedPick(kind, ids, avoid) {
@@ -74,6 +74,13 @@ function chordBlock(minimal) {
   }
   known = store.unlocked('c');
   if (!minimal) steps.push(...chordCards(known, fresh.length ? 5 : 4, fresh));
+
+  // Inversiones: solo de tríadas que ya están firmes.
+  if (!minimal) {
+    const firm = known.filter((id) => store.stat('c', id).box >= 3 && CHORD_BY_ID.get(id).pcs.length === 3);
+    const pool = [...firm].sort(() => Math.random() - 0.5).slice(0, 2);
+    pool.forEach((id, i) => steps.push({ type: 'chord-inv', chord: id, inv: Math.random() < 0.5 ? 1 : 2, first: i === 0 }));
+  }
   return steps;
 }
 
@@ -107,6 +114,10 @@ export function buildSession({ minimal = false } = {}) {
   if (!minimal) steps.push(...theorySteps());
   steps.push({ type: 'section', title: 'Acordes', text: 'Lee el símbolo y arma el acorde.' });
   steps.push(...chordBlock(minimal));
+  if (!minimal) {
+    steps.push({ type: 'section', title: 'Ritmo', text: 'Marca el ritmo escrito siguiendo el pulso.' });
+    steps.push({ type: 'rhythm' }, { type: 'rhythm' });
+  }
   steps.push({ type: 'section', title: 'Mano derecha', text: 'Lee la nota en clave de sol y tócala.' });
   steps.push(...staffBlock('n', minimal, { review: 5, withNew: 6, plain: 4, phrases: 2 }));
   steps.push({ type: 'section', title: 'Mano izquierda', text: 'Lee la nota en clave de fa y tócala con la izquierda.' });

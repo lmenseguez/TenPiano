@@ -73,6 +73,7 @@ export function drawExample(container, items, clef = 'treble') {
 
   const notes = items.map((item) => {
     const note = new VF.StaveNote({ keys: item.keys || [item.key], duration: item.duration || 'w', auto_stem: true, clef });
+    if ((item.duration || '').endsWith('d')) VF.Dot.buildAndAttach([note], { all: true });
     if (item.label) {
       const ann = new VF.Annotation(item.label);
       ann.setFont('Arial', 10, 'bold');
@@ -85,8 +86,10 @@ export function drawExample(container, items, clef = 'treble') {
 
   const voice = new VF.Voice({ num_beats: 4, beat_value: 4 }).setStrict(false);
   voice.addTickables(notes);
+  const beams = VF.Beam.generateBeams(notes.filter((n) => ['8', '16'].includes(n.getDuration())));
   new VF.Formatter().joinVoices([voice]).format([voice], width - 110);
   voice.draw(ctx, stave);
+  beams.forEach((b) => b.setContext(ctx).draw());
 
   const svg = container.querySelector('svg');
   svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
@@ -174,12 +177,13 @@ export function foldToKeyboard(midi) {
 }
 
 // highlight: tecla o teclas resaltadas. selected: teclas marcadas por ti.
-export function drawKeyboard(container, { highlight = null, selected = [], onPress = null, labels = false, base = 60 } = {}) {
-  const WHITE = WHITE_STEPS.map((st) => base + st);
-  const BLACK = BLACK_STEPS.map(([st, i]) => [base + st, i]);
+// wide: catorce teclas blancas en vez de doce (llega hasta el Si agudo), para inversiones.
+export function drawKeyboard(container, { highlight = null, selected = [], onPress = null, labels = false, base = 60, wide = false } = {}) {
+  const WHITE = [...WHITE_STEPS, ...(wide ? [21, 23] : [])].map((st) => base + st);
+  const BLACK = [...BLACK_STEPS, ...(wide ? [[20, 11], [22, 12]] : [])].map(([st, i]) => [base + st, i]);
   const hi = new Set(highlight === null ? [] : Array.isArray(highlight) ? highlight : [highlight]);
   const sel = new Set(selected);
-  const kw = 30;
+  const kw = wide ? 26 : 30;
   const kh = 110;
   const w = WHITE.length * kw;
   const ns = 'http://www.w3.org/2000/svg';
@@ -210,7 +214,8 @@ export function drawKeyboard(container, { highlight = null, selected = [], onPre
   };
 
   WHITE.forEach((midi, i) => make(midi, i * kw + 0.5, 0.5, kw - 1, kh, 'key-white'));
-  BLACK.forEach(([midi, i]) => make(midi, (i + 1) * kw - 9, 0.5, 18, kh * 0.62, 'key-black'));
+  const bw = wide ? 16 : 18;
+  BLACK.forEach(([midi, i]) => make(midi, (i + 1) * kw - bw / 2, 0.5, bw, kh * 0.62, 'key-black'));
 
   // Marca del Do central, siempre visible como referencia.
   const central = WHITE.indexOf(60);

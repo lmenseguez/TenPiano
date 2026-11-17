@@ -1,5 +1,5 @@
 // Entrada de micrófono: escucha el teclado y avisa cada vez que suena una nota.
-import { PitchDetector, NoteTracker, NoiseFloor, rms } from './pitch.js';
+import { PitchDetector, NoteTracker, NoiseFloor, ChordChecker, rms } from './pitch.js';
 
 export class MicListener {
   constructor() {
@@ -12,6 +12,9 @@ export class MicListener {
     this.timer = null;
     this.onNote = null; // (midi) => void
     this.expect = null; // (midi) => boolean: la nota que la app espera oír ahora
+    this.chord = null; // clases de nota del acorde esperado, para reconocerlo tocado completo
+    this.onChord = null; // () => void: sonó el acorde completo
+    this.chordRun = 0;
     this.onLevel = null; // ({ level, midi }) => void
   }
 
@@ -52,6 +55,13 @@ export class MicListener {
     highpass.connect(lowpass);
     lowpass.connect(this.analyser);
     this.buffer = new Float32Array(this.analyser.fftSize);
+    // Segundo analizador, de más resolución, para ver varias notas a la vez.
+    this.wide = this.ctx.createAnalyser();
+    this.wide.fftSize = 8192;
+    this.wide.smoothingTimeConstant = 0.2;
+    lowpass.connect(this.wide);
+    this.spectrum = new Float32Array(this.wide.frequencyBinCount);
+    this.chords = new ChordChecker(this.ctx.sampleRate, this.wide.fftSize);
     this.detector = new PitchDetector(this.ctx.sampleRate);
     this.tracker = new NoteTracker();
     this.noise = new NoiseFloor();
@@ -64,8 +74,24 @@ export class MicListener {
     const level = rms(this.buffer);
     this.tracker.gate = this.noise.update(level);
     this.tracker.expected = this.expect;
+
+    // Acorde completo: si suenan juntas todas sus notas durante un instante, cuenta.
+    let together = 0;
+    if (this.chord && level >= this.tracker.gate) {
+      this.wide.getFloatFrequencyData(this.spectrum);
+      const res = this.chords.check(this.spectrum, this.chord);
+      together = res.present.size;
+      this.chordRun = res.matched ? this.chordRun + 1 : 0;
+      if (this.chordRun === 4 && this.onChord) this.onChord();
+    } else {
+      this.chordRun = 0;
+    }
+
     const result = level >= this.tracker.gate ? this.detector.detect(this.buffer) : null;
-    const midi = this.tracker.push(result, level, performance.now());
+    let midi = this.tracker.push(result, level, performance.now());
+    // Con dos o más notas del acorde sonando juntas, la lectura de nota suelta no es fiable:
+    // solo se aceptan notas del acorde, nunca un "error".
+    if (midi !== null && together >= 2 && this.expect && !this.expect(midi)) midi = null;
     if (this.onLevel) this.onLevel({ level, gate: this.tracker.gate, midi: this.tracker.current });
     if (midi !== null && this.onNote) this.onNote(midi);
   }
